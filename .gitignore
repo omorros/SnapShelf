@@ -19,3 +19,5 @@ venv/
 # IDEs
 .vscode/
 .idea/
+
+claude.md
