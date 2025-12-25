@@ -1,8 +1,10 @@
-from fastapi import FastAPI
-from sqlalchemy import text
-from fastapi import Depends
+from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
-from app.core.database import get_db
+from sqlalchemy import text
+
+from app.core.database import engine, Base, get_db
+from app.models import user, draft_item  # noqa: F401
+
 
 
 app = FastAPI(
@@ -18,3 +20,4 @@ def health_check():
 def db_test(db: Session = Depends(get_db)):
     result = db.execute(text("SELECT 1")).scalar()
     return {"db_response": result}
+
