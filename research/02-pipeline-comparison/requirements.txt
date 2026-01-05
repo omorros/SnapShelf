@@ -1,0 +1,19 @@
+# SnapShelf Console - Python Dependencies
+
+# CLI Framework
+typer==0.9.0
+
+# Object Detection
+ultralytics==8.1.0
+
+# AI/LLM Integration
+openai==1.12.0
+
+# Image Processing
+pillow==10.2.0
+
+# Terminal UI
+rich==13.7.0
+
+# Configuration
+python-dotenv==1.0.0
