@@ -82,7 +82,7 @@ def list(
 
     # Display results
     if items:
-        console.print(f"\n[bold]📦 Inventory ({len(items)} items)[/bold]\n")
+        console.print(f"\n[bold]Inventory ({len(items)} items)[/bold]\n")
         display_items(items)
     else:
         console.print("\n[yellow]Inventory is empty.[/yellow]")
@@ -271,11 +271,14 @@ def interactive_menu():
                 console.print("[yellow]No file selected.[/yellow]")
 
         elif choice == "2":
-            # View inventory
+            # View inventory (auto-consolidate duplicates first)
+            merged = storage.consolidate()
+            if merged > 0:
+                console.print(f"[dim]Consolidated {merged} duplicate item(s)[/dim]\n")
             items = storage.get_all(status="active")
             if items:
                 items.sort(key=lambda x: x.expiry_date or date.max)
-                console.print(f"[bold]📦 Inventory ({len(items)} items)[/bold]\n")
+                console.print(f"[bold]Inventory ({len(items)} items)[/bold]\n")
                 display_items(items)
             else:
                 console.print("[yellow]Inventory is empty.[/yellow]")
