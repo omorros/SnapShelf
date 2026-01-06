@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from pathlib import Path
-from datetime import date
+from datetime import date, timedelta
 from typing import List
 from tkinter import Tk, filedialog
 
@@ -205,18 +205,19 @@ def interactive_menu():
         menu.add_column("Action", style="white")
 
         menu.add_row("1.", "Scan food image")
-        menu.add_row("2.", "View inventory")
-        menu.add_row("3.", "View expiring items")
-        menu.add_row("4.", "Edit item")
-        menu.add_row("5.", "Remove item")
-        menu.add_row("6.", "Clear all inventory")
-        menu.add_row("7.", "Exit")
+        menu.add_row("2.", "Add item manually")
+        menu.add_row("3.", "View inventory")
+        menu.add_row("4.", "View expiring items")
+        menu.add_row("5.", "Edit item")
+        menu.add_row("6.", "Remove item")
+        menu.add_row("7.", "Clear all inventory")
+        menu.add_row("8.", "Exit")
 
         console.print(menu)
         console.print()
 
         # Get user choice
-        choice = console.input("[bold green]Select option (1-7):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-8):[/bold green] ").strip()
         console.print()
 
         # Process user choice
@@ -321,6 +322,69 @@ def interactive_menu():
                 console.print("[yellow]No file selected.[/yellow]")
 
         elif choice == "2":
+            # Add item manually
+            console.print("[bold]Add Item Manually[/bold]\n")
+
+            # Get item name (required)
+            name = console.input("[cyan]Item name:[/cyan] ").strip()
+            if not name:
+                console.print("[red]Item name is required.[/red]")
+            else:
+                # Get category
+                console.print("\n[dim]Categories: Fruit, Vegetable, Dairy, Meat, Seafood, Grain, Beverage, Condiment, Snack, Prepared Food, Other[/dim]")
+                category = console.input("[cyan]Category:[/cyan] ").strip() or "Other"
+
+                # Get quantity and unit
+                console.print("\n[dim]Units: unit (countable), g, kg, ml, L[/dim]")
+                unit = console.input("[cyan]Unit [unit]:[/cyan] ").strip() or "unit"
+
+                qty_input = console.input(f"[cyan]Quantity [{unit}]:[/cyan] ").strip() or "1"
+                quantity = float(qty_input) if qty_input.replace('.', '', 1).isdigit() else 1.0
+
+                # Get expiry date (with auto-prediction based on category)
+                # Based on USDA/FDA guidelines: https://food.unl.edu/free-resource/food-storage/
+                default_expiry_days = {
+                    "fruit": 10,          # Berries 7-14d, apples 4-6 weeks
+                    "vegetable": 5,       # Leafy greens 2d, broccoli 3-5d
+                    "dairy": 7,           # Milk 7d, yogurt 7-14d
+                    "meat": 3,            # Ground 1-2d, fresh cuts 3-5d
+                    "seafood": 2,         # Fresh fish 1-2d
+                    "grain": 60,          # Bread 5-7d, dry goods longer
+                    "beverage": 7,        # Opened juice ~7d
+                    "condiment": 60,      # Ketchup 6mo, mayo 2mo opened
+                    "snack": 30,          # Varies by type
+                    "prepared food": 4,   # Leftovers 3-4d
+                    "other": 7
+                }
+                predicted_days = default_expiry_days.get(category.lower(), 7)
+                predicted_date = date.today() + timedelta(days=predicted_days)
+
+                console.print(f"\n[dim]Date format: YYYY-MM-DD | Press Enter for predicted: {predicted_date.strftime('%Y-%m-%d')} ({predicted_days} days)[/dim]")
+                expiry_input = console.input("[cyan]Expiry date:[/cyan] ").strip()
+
+                if expiry_input:
+                    try:
+                        from datetime import datetime
+                        expiry_date = datetime.strptime(expiry_input, "%Y-%m-%d").date()
+                    except ValueError:
+                        console.print(f"[yellow]Invalid date format, using predicted: {predicted_date}[/yellow]")
+                        expiry_date = predicted_date
+                else:
+                    expiry_date = predicted_date
+
+                # Create and save item
+                from models.food_item import FoodItem
+                item = FoodItem(
+                    name=name,
+                    category=category,
+                    quantity=quantity,
+                    unit=unit,
+                    expiry_date=expiry_date
+                )
+                storage.add(item)
+                console.print(f"\n[green]✓ Added:[/green] {name} ({quantity} {unit})")
+
+        elif choice == "3":
             # View inventory (auto-consolidate duplicates first)
             merged = storage.consolidate()
             if merged > 0:
@@ -333,7 +397,7 @@ def interactive_menu():
             else:
                 console.print("[yellow]Inventory is empty.[/yellow]")
 
-        elif choice == "3":
+        elif choice == "4":
             # View expiring items
             days = console.input("[cyan]Days to look ahead (default 7):[/cyan] ").strip()
             days = int(days) if days.isdigit() else 7
@@ -345,7 +409,7 @@ def interactive_menu():
             else:
                 console.print(f"[green]No items expiring in the next {days} days.[/green]")
 
-        elif choice == "4":
+        elif choice == "5":
             # Edit item
             items = storage.get_all(status="active")
             if not items:
@@ -397,7 +461,7 @@ def interactive_menu():
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "5":
+        elif choice == "6":
             # Remove item (with reason)
             items = storage.get_all(status="active")
             if not items:
@@ -458,7 +522,7 @@ def interactive_menu():
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "6":
+        elif choice == "7":
             # Clear inventory
             items = storage.get_all(status=None)
             if items:
@@ -471,13 +535,13 @@ def interactive_menu():
             else:
                 console.print("[yellow]Inventory is already empty.[/yellow]")
 
-        elif choice == "7":
+        elif choice == "8":
             # Exit
             console.print("[cyan]Thank you for using SnapShelf![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-7.[/red]")
+            console.print("[red]Invalid option. Please select 1-8.[/red]")
 
         # Pause before returning to menu
         console.print()
