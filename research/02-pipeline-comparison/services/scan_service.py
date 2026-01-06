@@ -39,6 +39,25 @@ class ScanService:
         Returns:
             List of identified and saved FoodItem objects
         """
+        # Detect and identify items
+        food_items = self.scan_image_preview(image_path)
+
+        # Save all identified items to inventory
+        if food_items:
+            self.storage.add_many(food_items)
+
+        return food_items
+
+    def scan_image_preview(self, image_path: str) -> List[FoodItem]:
+        """
+        Detect and identify items without saving to inventory.
+
+        Args:
+            image_path: Path to the image file to scan
+
+        Returns:
+            List of identified FoodItem objects (not saved)
+        """
         # Step 1: YOLO object detection
         detections = self.yolo.detect(image_path)
 
@@ -63,8 +82,14 @@ class ScanService:
                 )
                 food_items.append(item)
 
-        # Step 3: Save all identified items to inventory
-        if food_items:
-            self.storage.add_many(food_items)
-
         return food_items
+
+    def save_items(self, items: List[FoodItem]) -> None:
+        """
+        Save items to inventory.
+
+        Args:
+            items: List of FoodItem objects to save
+        """
+        if items:
+            self.storage.add_many(items)

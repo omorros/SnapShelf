@@ -26,6 +26,7 @@ def display_items(items: List[FoodItem], show_row_numbers: bool = False):
     else:
         table.add_column("ID", style="dim", width=8)
     table.add_column("Item", style="white")
+    table.add_column("Qty", style="white", justify="center")
     table.add_column("Category", style="yellow")
     table.add_column("Expiry", style="white")
     table.add_column("Status", style="white")
@@ -52,11 +53,15 @@ def display_items(items: List[FoodItem], show_row_numbers: bool = False):
         else:
             status_str = "[bold green]Fresh[/bold green]"
 
+        # Format quantity
+        qty_str = str(int(item.quantity)) if item.quantity == int(item.quantity) else str(item.quantity)
+
         # Add row to table
         first_col = str(idx) if show_row_numbers else item.id
         table.add_row(
             first_col,
             item.name,
+            qty_str,
             item.category,
             expiry_str,
             status_str

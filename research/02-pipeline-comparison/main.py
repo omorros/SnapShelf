@@ -247,11 +247,23 @@ def interactive_menu():
                 console.print(f"\n[bold]Scanning:[/bold] {path.name}\n")
                 with console.status("Detecting objects..."):
                     scan_service = ScanService()
-                    items = scan_service.scan_image(str(path))
+                    items = scan_service.scan_image_preview(str(path))
 
                 if items:
-                    console.print(f"[green]✓ Added {len(items)} items to inventory:[/green]\n")
-                    display_items(items)
+                    console.print(f"[green]✓ Detected {len(items)} item(s):[/green]\n")
+                    display_items(items, show_row_numbers=True)
+                    console.print()
+
+                    # Let user edit quantities
+                    console.print("[cyan]Set quantities for each item (press Enter to keep default of 1):[/cyan]\n")
+                    for idx, item in enumerate(items, 1):
+                        qty_input = console.input(f"  {idx}. {item.name} - Quantity: ").strip()
+                        if qty_input.isdigit() and int(qty_input) > 0:
+                            item.quantity = float(qty_input)
+
+                    # Save items
+                    scan_service.save_items(items)
+                    console.print(f"\n[green]✓ Added {len(items)} item(s) to inventory![/green]")
                 else:
                     console.print("[yellow]No food items detected in image.[/yellow]")
             else:
