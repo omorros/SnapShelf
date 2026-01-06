@@ -281,36 +281,69 @@ def interactive_menu():
 
         elif choice == "4":
             # Mark as consumed
-            item_id = console.input("[cyan]Enter item ID to mark as consumed:[/cyan] ").strip()
-            if item_id:
-                item = storage.get_by_id(item_id)
-                if item:
-                    storage.update(item_id, {"status": "consumed"})
-                    console.print(f"[green]✓ Consumed:[/green] {item.name}")
-                else:
-                    console.print(f"[red]Item not found: {item_id}[/red]")
+            items = storage.get_all(status="active")
+            if not items:
+                console.print("[yellow]No items in inventory.[/yellow]")
+            else:
+                items.sort(key=lambda x: x.expiry_date or date.max)
+                console.print("[bold]Select item to mark as consumed:[/bold]\n")
+                display_items(items, show_row_numbers=True)
+                console.print()
+                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
+                if selection.lower() != 'c' and selection.isdigit():
+                    idx = int(selection)
+                    if 1 <= idx <= len(items):
+                        item = items[idx - 1]
+                        storage.update(item.id, {"status": "consumed"})
+                        console.print(f"[green]✓ Consumed:[/green] {item.name}")
+                    else:
+                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
+                elif selection.lower() != 'c':
+                    console.print("[red]Invalid input.[/red]")
 
         elif choice == "5":
             # Mark as discarded
-            item_id = console.input("[cyan]Enter item ID to mark as discarded:[/cyan] ").strip()
-            if item_id:
-                item = storage.get_by_id(item_id)
-                if item:
-                    storage.update(item_id, {"status": "discarded"})
-                    console.print(f"[yellow]✓ Discarded:[/yellow] {item.name}")
-                else:
-                    console.print(f"[red]Item not found: {item_id}[/red]")
+            items = storage.get_all(status="active")
+            if not items:
+                console.print("[yellow]No items in inventory.[/yellow]")
+            else:
+                items.sort(key=lambda x: x.expiry_date or date.max)
+                console.print("[bold]Select item to mark as discarded:[/bold]\n")
+                display_items(items, show_row_numbers=True)
+                console.print()
+                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
+                if selection.lower() != 'c' and selection.isdigit():
+                    idx = int(selection)
+                    if 1 <= idx <= len(items):
+                        item = items[idx - 1]
+                        storage.update(item.id, {"status": "discarded"})
+                        console.print(f"[yellow]✓ Discarded:[/yellow] {item.name}")
+                    else:
+                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
+                elif selection.lower() != 'c':
+                    console.print("[red]Invalid input.[/red]")
 
         elif choice == "6":
             # Remove item
-            item_id = console.input("[cyan]Enter item ID to remove:[/cyan] ").strip()
-            if item_id:
-                item = storage.get_by_id(item_id)
-                if item:
-                    storage.remove(item_id)
-                    console.print(f"[green]✓ Removed:[/green] {item.name}")
-                else:
-                    console.print(f"[red]Item not found: {item_id}[/red]")
+            items = storage.get_all(status="active")
+            if not items:
+                console.print("[yellow]No items in inventory.[/yellow]")
+            else:
+                items.sort(key=lambda x: x.expiry_date or date.max)
+                console.print("[bold]Select item to remove:[/bold]\n")
+                display_items(items, show_row_numbers=True)
+                console.print()
+                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
+                if selection.lower() != 'c' and selection.isdigit():
+                    idx = int(selection)
+                    if 1 <= idx <= len(items):
+                        item = items[idx - 1]
+                        storage.remove(item.id)
+                        console.print(f"[green]✓ Removed:[/green] {item.name}")
+                    else:
+                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
+                elif selection.lower() != 'c':
+                    console.print("[red]Invalid input.[/red]")
 
         elif choice == "7":
             # Clear inventory

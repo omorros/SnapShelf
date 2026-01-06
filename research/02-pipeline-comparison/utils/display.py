@@ -11,23 +11,27 @@ from models.food_item import FoodItem
 console = Console()
 
 
-def display_items(items: List[FoodItem]):
+def display_items(items: List[FoodItem], show_row_numbers: bool = False):
     """
     Display food items in a formatted table.
 
     Args:
         items: List of FoodItem objects to display
+        show_row_numbers: If True, show row numbers for selection instead of IDs
     """
     # Create table with columns
     table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("ID", style="dim", width=8)
+    if show_row_numbers:
+        table.add_column("#", style="bold yellow", width=4)
+    else:
+        table.add_column("ID", style="dim", width=8)
     table.add_column("Item", style="white")
     table.add_column("Category", style="yellow")
     table.add_column("Expiry", style="white")
     table.add_column("Status", style="white")
 
     # Add rows for each item
-    for item in items:
+    for idx, item in enumerate(items, 1):
         # Format expiry date and days remaining
         if item.expiry_date:
             days = item.days_until_expiry()
@@ -49,8 +53,9 @@ def display_items(items: List[FoodItem]):
             status_str = "🟢 Fresh"
 
         # Add row to table
+        first_col = str(idx) if show_row_numbers else item.id
         table.add_row(
-            item.id,
+            first_col,
             item.name,
             item.category,
             expiry_str,
