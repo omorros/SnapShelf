@@ -207,15 +207,16 @@ def interactive_menu():
         menu.add_row("1.", "Scan food image")
         menu.add_row("2.", "View inventory")
         menu.add_row("3.", "View expiring items")
-        menu.add_row("4.", "Remove item")
-        menu.add_row("5.", "Clear all inventory")
-        menu.add_row("6.", "Exit")
+        menu.add_row("4.", "Edit item")
+        menu.add_row("5.", "Remove item")
+        menu.add_row("6.", "Clear all inventory")
+        menu.add_row("7.", "Exit")
 
         console.print(menu)
         console.print()
 
         # Get user choice
-        choice = console.input("[bold green]Select option (1-6):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-7):[/bold green] ").strip()
         console.print()
 
         # Process user choice
@@ -345,6 +346,58 @@ def interactive_menu():
                 console.print(f"[green]No items expiring in the next {days} days.[/green]")
 
         elif choice == "4":
+            # Edit item
+            items = storage.get_all(status="active")
+            if not items:
+                console.print("[yellow]No items in inventory.[/yellow]")
+            else:
+                items.sort(key=lambda x: x.expiry_date or date.max)
+                console.print("[bold]Select item to edit:[/bold]\n")
+                display_items(items, show_row_numbers=True)
+                console.print()
+                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
+                if selection.lower() != 'c' and selection.isdigit():
+                    idx = int(selection)
+                    if 1 <= idx <= len(items):
+                        item = items[idx - 1]
+                        console.print(f"\n[bold]Editing: {item.name}[/bold]")
+                        console.print("[dim]Press Enter to keep current value[/dim]\n")
+
+                        # Edit name
+                        new_name = console.input(f"  Name [{item.name}]: ").strip()
+                        if new_name:
+                            item.name = new_name
+
+                        # Edit quantity
+                        unit_hint = f" ({item.unit})" if item.unit != "unit" else ""
+                        qty_display = int(item.quantity) if item.quantity == int(item.quantity) else item.quantity
+                        new_qty = console.input(f"  Quantity{unit_hint} [{qty_display}]: ").strip()
+                        if new_qty.replace('.', '', 1).isdigit() and float(new_qty) > 0:
+                            item.quantity = float(new_qty)
+
+                        # Edit expiry date
+                        current_expiry = item.expiry_date.strftime("%Y-%m-%d") if item.expiry_date else "none"
+                        new_expiry = console.input(f"  Expiry date [{current_expiry}]: ").strip()
+                        if new_expiry:
+                            try:
+                                from datetime import datetime
+                                item.expiry_date = datetime.strptime(new_expiry, "%Y-%m-%d").date()
+                            except ValueError:
+                                console.print("[red]  Invalid date format. Use YYYY-MM-DD[/red]")
+
+                        # Save changes
+                        storage.update(item.id, {
+                            "name": item.name,
+                            "quantity": item.quantity,
+                            "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None
+                        })
+                        console.print(f"\n[green]✓ Updated {item.name}[/green]")
+                    else:
+                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
+                elif selection.lower() != 'c':
+                    console.print("[red]Invalid input.[/red]")
+
+        elif choice == "5":
             # Remove item (with reason)
             items = storage.get_all(status="active")
             if not items:
@@ -405,7 +458,7 @@ def interactive_menu():
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "5":
+        elif choice == "6":
             # Clear inventory
             items = storage.get_all(status=None)
             if items:
@@ -418,13 +471,13 @@ def interactive_menu():
             else:
                 console.print("[yellow]Inventory is already empty.[/yellow]")
 
-        elif choice == "6":
+        elif choice == "7":
             # Exit
             console.print("[cyan]Thank you for using SnapShelf![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-6.[/red]")
+            console.print("[red]Invalid option. Please select 1-7.[/red]")
 
         # Pause before returning to menu
         console.print()
