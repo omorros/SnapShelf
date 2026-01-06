@@ -3,6 +3,14 @@ YOLO-based object detection service.
 Detects objects in images and returns cropped regions for food identification.
 """
 
+import os
+
+# Fix for PyTorch 2.6+ weights_only default change
+# Set environment variable before importing torch to allow legacy model loading
+# This is safe for trusted models like official YOLOv8 weights from ultralytics
+os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
+
+import torch
 from ultralytics import YOLO
 from PIL import Image
 from io import BytesIO
