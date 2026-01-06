@@ -207,17 +207,15 @@ def interactive_menu():
         menu.add_row("1.", "Scan food image")
         menu.add_row("2.", "View inventory")
         menu.add_row("3.", "View expiring items")
-        menu.add_row("4.", "Mark item as consumed")
-        menu.add_row("5.", "Mark item as discarded")
-        menu.add_row("6.", "Remove item from inventory")
-        menu.add_row("7.", "Clear all inventory")
-        menu.add_row("8.", "Exit")
+        menu.add_row("4.", "Remove item")
+        menu.add_row("5.", "Clear all inventory")
+        menu.add_row("6.", "Exit")
 
         console.print(menu)
         console.print()
 
         # Get user choice
-        choice = console.input("[bold green]Select option (1-8):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-6):[/bold green] ").strip()
         console.print()
 
         # Process user choice
@@ -296,51 +294,7 @@ def interactive_menu():
                 console.print(f"[green]No items expiring in the next {days} days.[/green]")
 
         elif choice == "4":
-            # Mark as consumed
-            items = storage.get_all(status="active")
-            if not items:
-                console.print("[yellow]No items in inventory.[/yellow]")
-            else:
-                items.sort(key=lambda x: x.expiry_date or date.max)
-                console.print("[bold]Select item to mark as consumed:[/bold]\n")
-                display_items(items, show_row_numbers=True)
-                console.print()
-                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
-                if selection.lower() != 'c' and selection.isdigit():
-                    idx = int(selection)
-                    if 1 <= idx <= len(items):
-                        item = items[idx - 1]
-                        storage.update(item.id, {"status": "consumed"})
-                        console.print(f"[green]✓ Consumed:[/green] {item.name}")
-                    else:
-                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
-                elif selection.lower() != 'c':
-                    console.print("[red]Invalid input.[/red]")
-
-        elif choice == "5":
-            # Mark as discarded
-            items = storage.get_all(status="active")
-            if not items:
-                console.print("[yellow]No items in inventory.[/yellow]")
-            else:
-                items.sort(key=lambda x: x.expiry_date or date.max)
-                console.print("[bold]Select item to mark as discarded:[/bold]\n")
-                display_items(items, show_row_numbers=True)
-                console.print()
-                selection = console.input("[cyan]Enter item number (or 'c' to cancel):[/cyan] ").strip()
-                if selection.lower() != 'c' and selection.isdigit():
-                    idx = int(selection)
-                    if 1 <= idx <= len(items):
-                        item = items[idx - 1]
-                        storage.update(item.id, {"status": "discarded"})
-                        console.print(f"[yellow]✓ Discarded:[/yellow] {item.name}")
-                    else:
-                        console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
-                elif selection.lower() != 'c':
-                    console.print("[red]Invalid input.[/red]")
-
-        elif choice == "6":
-            # Remove item
+            # Remove item (with reason)
             items = storage.get_all(status="active")
             if not items:
                 console.print("[yellow]No items in inventory.[/yellow]")
@@ -354,14 +308,31 @@ def interactive_menu():
                     idx = int(selection)
                     if 1 <= idx <= len(items):
                         item = items[idx - 1]
-                        storage.remove(item.id)
-                        console.print(f"[green]✓ Removed:[/green] {item.name}")
+                        # Ask for reason
+                        console.print(f"\n[bold]What happened to {item.name}?[/bold]\n")
+                        console.print("  1. Consumed (eaten/used)")
+                        console.print("  2. Discarded (thrown away)")
+                        console.print("  3. Delete (remove from history)")
+                        console.print("  c. Cancel")
+                        console.print()
+                        reason = console.input("[cyan]Select option:[/cyan] ").strip()
+                        if reason == "1":
+                            storage.update(item.id, {"status": "consumed"})
+                            console.print(f"[green]✓ Marked as consumed:[/green] {item.name}")
+                        elif reason == "2":
+                            storage.update(item.id, {"status": "discarded"})
+                            console.print(f"[yellow]✓ Marked as discarded:[/yellow] {item.name}")
+                        elif reason == "3":
+                            storage.remove(item.id)
+                            console.print(f"[green]✓ Deleted:[/green] {item.name}")
+                        elif reason.lower() != 'c':
+                            console.print("[red]Invalid option.[/red]")
                     else:
                         console.print(f"[red]Invalid selection. Enter 1-{len(items)}[/red]")
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "7":
+        elif choice == "5":
             # Clear inventory
             items = storage.get_all(status=None)
             if items:
@@ -374,13 +345,13 @@ def interactive_menu():
             else:
                 console.print("[yellow]Inventory is already empty.[/yellow]")
 
-        elif choice == "8":
+        elif choice == "6":
             # Exit
             console.print("[cyan]Thank you for using SnapShelf![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-8.[/red]")
+            console.print("[red]Invalid option. Please select 1-6.[/red]")
 
         # Pause before returning to menu
         console.print()
