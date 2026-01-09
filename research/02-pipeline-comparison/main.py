@@ -208,16 +208,17 @@ def interactive_menu():
         menu.add_row("2.", "Add item manually")
         menu.add_row("3.", "View inventory")
         menu.add_row("4.", "View expiring items")
-        menu.add_row("5.", "Edit item")
-        menu.add_row("6.", "Remove item")
-        menu.add_row("7.", "Clear all inventory")
-        menu.add_row("8.", "Exit")
+        menu.add_row("5.", "View history")
+        menu.add_row("6.", "Edit item")
+        menu.add_row("7.", "Remove item")
+        menu.add_row("8.", "Clear all inventory")
+        menu.add_row("9.", "Exit")
 
         console.print(menu)
         console.print()
 
         # Get user choice
-        choice = console.input("[bold green]Select option (1-8):[/bold green] ").strip()
+        choice = console.input("[bold green]Select option (1-9):[/bold green] ").strip()
         console.print()
 
         # Process user choice
@@ -410,6 +411,55 @@ def interactive_menu():
                 console.print(f"[green]No items expiring in the next {days} days.[/green]")
 
         elif choice == "5":
+            # View history
+            console.print("[bold]View History[/bold]\n")
+            console.print("  1. All (consumed & discarded)")
+            console.print("  2. Consumed only")
+            console.print("  3. Discarded only")
+            console.print()
+            filter_choice = console.input("[cyan]Select filter [1]:[/cyan] ").strip() or "1"
+
+            if filter_choice == "2":
+                items = storage.get_all(status="consumed")
+                title = "Consumed Items"
+            elif filter_choice == "3":
+                items = storage.get_all(status="discarded")
+                title = "Discarded Items"
+            else:
+                consumed = storage.get_all(status="consumed")
+                discarded = storage.get_all(status="discarded")
+                items = consumed + discarded
+                title = "History (Consumed & Discarded)"
+
+            if items:
+                # Sort by added_at date, most recent first
+                items.sort(key=lambda x: x.added_at, reverse=True)
+
+                # Create history table
+                table = Table(show_header=True, header_style="bold cyan")
+                table.add_column("Item", style="white")
+                table.add_column("Qty", style="white", justify="center")
+                table.add_column("Category", style="yellow")
+                table.add_column("Status", style="white")
+
+                for item in items:
+                    qty_val = str(int(item.quantity)) if item.quantity == int(item.quantity) else str(item.quantity)
+                    unit_display = "" if item.unit == "unit" else f" {item.unit}"
+                    qty_str = f"{qty_val}{unit_display}"
+
+                    if item.status == "consumed":
+                        status_str = "[green]Consumed[/green]"
+                    else:
+                        status_str = "[red]Discarded[/red]"
+
+                    table.add_row(item.name, qty_str, item.category, status_str)
+
+                console.print(f"[bold]{title} ({len(items)} items)[/bold]\n")
+                console.print(table)
+            else:
+                console.print("[yellow]No history yet.[/yellow]")
+
+        elif choice == "6":
             # Edit item
             items = storage.get_all(status="active")
             if not items:
@@ -461,7 +511,7 @@ def interactive_menu():
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "6":
+        elif choice == "7":
             # Remove item (with reason)
             items = storage.get_all(status="active")
             if not items:
@@ -522,7 +572,7 @@ def interactive_menu():
                 elif selection.lower() != 'c':
                     console.print("[red]Invalid input.[/red]")
 
-        elif choice == "7":
+        elif choice == "8":
             # Clear inventory
             items = storage.get_all(status=None)
             if items:
@@ -535,13 +585,13 @@ def interactive_menu():
             else:
                 console.print("[yellow]Inventory is already empty.[/yellow]")
 
-        elif choice == "8":
+        elif choice == "9":
             # Exit
             console.print("[cyan]Thank you for using SnapShelf![/cyan]")
             break
 
         else:
-            console.print("[red]Invalid option. Please select 1-8.[/red]")
+            console.print("[red]Invalid option. Please select 1-9.[/red]")
 
         # Pause before returning to menu
         console.print()
