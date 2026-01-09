@@ -1,77 +1,105 @@
 """
-YOLO-based object detection service.
-Detects objects in images and returns cropped regions for food identification.
+YOLO-World based region proposal service.
+Uses YOLO-World as a learned proposal generator with open vocabulary.
+Class labels are ignored - LLM does semantic filtering.
 """
 
 import os
-
-# Fix for PyTorch 2.6+ weights_only default change
-# Set environment variable before importing torch to allow legacy model loading
-# This is safe for trusted models like official YOLOv8 weights from ultralytics
 os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
 
 import torch
-from ultralytics import YOLO
+from ultralytics import YOLOWorld
 from PIL import Image
 from io import BytesIO
-from pathlib import Path
 from typing import List
 
 
 class YOLOService:
     """
-    Object detection service using YOLOv8.
+    Region proposal service using YOLO-World.
+
+    Uses open vocabulary detection to find potential food items.
+    LLM does final identification and filters non-food.
 
     Attributes:
-        model: Loaded YOLO model instance
+        model: Loaded YOLO-World model instance
     """
 
-    def __init__(self, model_path: str = "yolov8s.pt"):
+    # Broad classes for proposal generation (not classification)
+    PROPOSAL_CLASSES = [
+        "food", "fruit", "vegetable", "package", "container",
+        "bottle", "box", "bag", "produce", "grocery item"
+    ]
+
+    # Detection settings
+    CONF_THRESHOLD = 0.15      # Lower = more proposals
+    IOU_THRESHOLD = 0.4        # NMS - merge overlapping boxes
+    MIN_AREA_RATIO = 0.02      # Min 2% of image area
+    MAX_ASPECT_RATIO = 6.0     # Filter extreme aspect ratios
+
+    def __init__(self, model_path: str = "yolov8s-worldv2.pt"):
         """
-        Initialize YOLO service with model.
+        Initialize YOLO-World service with model.
 
         Args:
-            model_path: Path to YOLO model weights file
+            model_path: Path to YOLO-World model weights
         """
-        self.model = YOLO(model_path)
+        self.model = YOLOWorld(model_path)
+        self.model.set_classes(self.PROPOSAL_CLASSES)
 
-    def detect(self, image_path: str, confidence: float = 0.3) -> List[dict]:
+    def detect(self, image_path: str) -> List[dict]:
         """
-        Detect objects in image and return cropped regions.
+        Generate region proposals from image.
+
+        Uses YOLO for over-generation, then filters by size/aspect ratio.
+        Class labels are ignored - LLM does semantic identification.
 
         Args:
             image_path: Path to the image file
-            confidence: Minimum confidence threshold for detections
 
         Returns:
-            List of dictionaries containing 'bbox' and 'image_bytes' for each detection
+            List of dictionaries containing 'bbox' and 'image_bytes' for each proposal
         """
-        # Load image
         image = Image.open(image_path)
+        image_area = image.width * image.height
 
-        # Run YOLO detection
-        results = self.model(image, conf=confidence, verbose=False)
+        # Run YOLO with high recall settings
+        results = self.model(
+            image,
+            conf=self.CONF_THRESHOLD,
+            iou=self.IOU_THRESHOLD,
+            verbose=False
+        )
 
         detections = []
 
-        # Process each detection
         for result in results:
             for box in result.boxes:
-                # Get bounding box coordinates
+                # Get bounding box coordinates (ignore class label)
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+                width, height = x2 - x1, y2 - y1
+
+                # Filter: minimum area (2-3% of image)
+                box_area = width * height
+                if box_area / image_area < self.MIN_AREA_RATIO:
+                    continue
+
+                # Filter: extreme aspect ratios
+                aspect_ratio = max(width, height) / max(min(width, height), 1)
+                if aspect_ratio > self.MAX_ASPECT_RATIO:
+                    continue
 
                 # Add padding (10%) to capture full object
-                width, height = x2 - x1, y2 - y1
                 pad_x, pad_y = int(width * 0.1), int(height * 0.1)
                 x1 = max(0, x1 - pad_x)
                 y1 = max(0, y1 - pad_y)
                 x2 = min(image.width, x2 + pad_x)
                 y2 = min(image.height, y2 + pad_y)
 
-                # Crop the detected region
+                # Crop the region
                 crop = image.crop((x1, y1, x2, y2))
 
-                # Convert crop to bytes for LLM processing
+                # Convert to bytes for LLM
                 buffer = BytesIO()
                 crop.save(buffer, format="PNG")
 
@@ -80,7 +108,7 @@ class YOLOService:
                     "image_bytes": buffer.getvalue()
                 })
 
-        # If no detections found, use entire image
+        # Fallback: if no proposals, use entire image
         if not detections:
             buffer = BytesIO()
             image.save(buffer, format="PNG")
