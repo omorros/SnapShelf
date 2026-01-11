@@ -71,12 +71,21 @@ class YOLODetector:
             max_detections: Max detections to return (default 15)
             crop_padding: Padding percentage for crops (default 0.10)
         """
-        # Find model in repo root or use absolute path
-        if not Path(model_path).exists():
+        # Try to find model: current dir -> repo root -> let Ultralytics auto-download
+        if Path(model_path).exists():
+            # Found in current directory or absolute path
+            resolved_path = model_path
+        else:
+            # Try repo root
             repo_root = Path(__file__).parent.parent
-            model_path = str(repo_root / model_path)
+            repo_path = repo_root / model_path
+            if repo_path.exists():
+                resolved_path = str(repo_path)
+            else:
+                # Not found locally - keep original name for Ultralytics auto-download
+                resolved_path = model_path
 
-        self.model = YOLO(model_path)
+        self.model = YOLO(resolved_path)
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
         self.max_detections = max_detections

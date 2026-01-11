@@ -13,19 +13,6 @@ from openai import OpenAI
 # Load environment variables
 load_dotenv()
 
-# =============================================================================
-# API KEY - loaded from environment variable
-# =============================================================================
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-if not OPENAI_API_KEY:
-    raise RuntimeError(
-        "OPENAI_API_KEY not found in environment.\n"
-        "Please create a .env file with: OPENAI_API_KEY=sk-your-key-here\n"
-        "Or set the environment variable directly."
-    )
-
 
 # =============================================================================
 # FROZEN SETTINGS - Locked for fair comparison
@@ -112,7 +99,20 @@ class LLMClient:
 
     def __init__(self):
         """Initialize with API key from environment."""
-        self.client = OpenAI(api_key=OPENAI_API_KEY)
+        api_key = os.getenv("OPENAI_API_KEY")
+
+        if not api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY not found.\n"
+                "To fix this:\n"
+                "  1. Create a .env file in the project root\n"
+                "  2. Add this line: OPENAI_API_KEY=sk-your-key-here\n"
+                "  Or set the environment variable directly:\n"
+                "  - Windows: set OPENAI_API_KEY=sk-your-key-here\n"
+                "  - Linux/Mac: export OPENAI_API_KEY=sk-your-key-here"
+            )
+
+        self.client = OpenAI(api_key=api_key)
         self.model = MODEL
         self.detail = IMAGE_DETAIL
         self.temperature = TEMPERATURE
