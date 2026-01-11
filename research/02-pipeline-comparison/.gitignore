@@ -37,9 +37,10 @@ venv.bak/
 *.swo
 *~
 
-# YOLO Models
+# YOLO Models (exclude all except the ones we use)
 *.pt
 !yolov8s.pt
+!yolov8s-worldv2.pt
 
 # Data
 data/inventory.json

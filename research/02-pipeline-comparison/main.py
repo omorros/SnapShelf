@@ -1,14 +1,72 @@
 """
 SnapShelf Console Application - Main CLI Entry Point
 AI-powered food inventory management using YOLO and Vision LLM.
+
+Usage:
+    python main.py llm <image_path>        Run LLM-only pipeline
+    python main.py yolo-llm <image_path>   Run YOLO+LLM hybrid pipeline
+    python main.py [command]               Run inventory management commands
+    python main.py                          Interactive menu mode
 """
 
 import sys
+import json
+from pathlib import Path
+
+# Pipeline commands - thin routing
+PIPELINE_COMMANDS = {"llm", "yolo-llm"}
+
+
+def print_usage():
+    """Print usage information and exit with error."""
+    print("""Usage:
+    python main.py llm <image_path>        Run LLM-only pipeline
+    python main.py yolo-llm <image_path>   Run YOLO+LLM hybrid pipeline
+    python main.py scan <image_path>       Scan and add to inventory
+    python main.py list                    List inventory
+    python main.py                         Interactive menu mode
+
+Pipeline options:
+    llm         Send full image to LLM for multi-item detection
+    yolo-llm    Use YOLO for region proposals, then LLM per crop
+""", file=sys.stderr)
+    sys.exit(1)
+
+
+def run_pipeline(pipeline: str, image_path: str) -> None:
+    """
+    Execute specified pipeline and print JSON result.
+
+    Args:
+        pipeline: "llm" or "yolo-llm"
+        image_path: Path to image file
+    """
+    # Validate image exists
+    path = Path(image_path)
+    if not path.exists():
+        print(f"Error: File not found: {image_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Import and run appropriate pipeline
+    if pipeline == "llm":
+        from pipelines.llm_pipeline import run_llm_pipeline
+        result = run_llm_pipeline(str(path))
+    else:  # yolo-llm
+        from pipelines.yolo_llm_pipeline import run_yolo_llm_pipeline
+        result = run_yolo_llm_pipeline(str(path))
+
+    # Output JSON
+    print(json.dumps(result, indent=2))
+
+
+# =============================================================================
+# Legacy inventory management (Typer app)
+# =============================================================================
+
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from pathlib import Path
 from datetime import date, timedelta
 from typing import List
 from tkinter import Tk, filedialog
@@ -599,10 +657,26 @@ def interactive_menu():
 
 
 if __name__ == "__main__":
-    # Check if running with command-line arguments
-    if len(sys.argv) > 1:
-        # Run as traditional CLI with arguments
-        app()
+    # Check for pipeline commands first
+    if len(sys.argv) >= 2:
+        cmd = sys.argv[1].lower()
+
+        if cmd in PIPELINE_COMMANDS:
+            # Pipeline mode: requires image path
+            if len(sys.argv) < 3:
+                print(f"Error: {cmd} requires an image path", file=sys.stderr)
+                print_usage()
+
+            run_pipeline(cmd, sys.argv[2])
+            sys.exit(0)
+
+        elif cmd in ("--help", "-h", "help"):
+            print_usage()
+
+        else:
+            # Try Typer app for other commands (scan, list, etc.)
+            app()
+
     else:
-        # Run in interactive menu mode
+        # No arguments - run interactive menu
         interactive_menu()
