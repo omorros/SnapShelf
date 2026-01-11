@@ -1,6 +1,6 @@
 """
-LLM client module for OpenAI Vision API calls.
-Handles image encoding, API requests, and JSON parsing.
+LLM client module for OpenAI Vision API.
+Frozen prompt for research comparison.
 """
 
 import base64
@@ -10,45 +10,63 @@ from openai import OpenAI
 from config import OPENAI_API_KEY
 
 
-class LLMClient:
-    """
-    OpenAI Vision API client for food identification.
+# =============================================================================
+# FROZEN PROMPT - Same prompt used for both System A and System B
+# =============================================================================
 
-    Attributes:
-        client: OpenAI API client
-        model: Model identifier (gpt-4o-mini)
-    """
+FROZEN_PROMPT_SINGLE = """Analyze this image. Identify the food item visible.
+
+Respond with ONLY this JSON (no markdown, no explanation):
+{
+  "is_food": true,
+  "name": "<generic name, not brand>",
+  "state": "<fresh|packaged|cooked|unknown>"
+}
+
+If NOT food: {"is_food": false}
+
+Rules:
+- name: Use generic names (e.g., "apple" not "Granny Smith", "chips" not "Lay's")
+- state: fresh (raw produce), packaged (in container/wrapper), cooked (prepared), unknown
+"""
+
+FROZEN_PROMPT_MULTI = """Analyze this image. Identify ALL food items visible.
+
+Respond with ONLY this JSON (no markdown, no explanation):
+{
+  "items": [
+    {"name": "<generic name>", "state": "<fresh|packaged|cooked|unknown>"}
+  ]
+}
+
+If no food visible: {"items": []}
+
+Rules:
+- name: Use generic names (e.g., "apple" not "Granny Smith", "milk" not "Lactaid")
+- state: fresh (raw produce), packaged (in container/wrapper), cooked (prepared), unknown
+- Include ALL distinct food items
+"""
+
+# =============================================================================
+
+
+class LLMClient:
+    """OpenAI Vision API client with frozen prompts."""
 
     def __init__(self):
-        """Initialize LLM client with OpenAI credentials from environment."""
+        """Initialize with API key from environment."""
         self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model = "gpt-4o-mini"
 
     def identify_single(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Identify a single food item from a cropped image.
-
-        Used by YOLO-LLM pipeline for per-crop analysis.
-
-        Args:
-            image_bytes: Binary image data (PNG format)
+        Identify single food item from cropped image.
+        Used by System B (YOLO-LLM) for per-crop analysis.
 
         Returns:
-            Dict with name, quantity, packaged if food detected, None otherwise
+            Dict with name, state if food detected, None otherwise
         """
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        prompt = """Analyze this image. If it contains a food item, respond with ONLY this JSON:
-{
-  "is_food": true,
-  "name": "Specific name (e.g., 'Granny Smith Apple')",
-  "quantity": <number or null if unclear>,
-  "packaged": <true if in package/container, false if loose, null if unclear>
-}
-
-If NOT a food item, respond: {"is_food": false}
-
-Return ONLY valid JSON."""
 
         try:
             response = self.client.chat.completions.create(
@@ -56,15 +74,15 @@ Return ONLY valid JSON."""
                 messages=[{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt},
+                        {"type": "text", "text": FROZEN_PROMPT_SINGLE},
                         {"type": "image_url", "image_url": {
                             "url": f"data:image/png;base64,{image_b64}",
                             "detail": "low"
                         }}
                     ]
                 }],
-                max_tokens=300,
-                temperature=0.1
+                max_tokens=150,
+                temperature=0
             )
 
             content = response.choices[0].message.content.strip()
@@ -73,9 +91,8 @@ Return ONLY valid JSON."""
 
             if result.get("is_food"):
                 return {
-                    "name": result.get("name", "Unknown"),
-                    "quantity": result.get("quantity"),
-                    "packaged": result.get("packaged")
+                    "name": result.get("name", "unknown"),
+                    "state": result.get("state", "unknown")
                 }
             return None
 
@@ -85,38 +102,13 @@ Return ONLY valid JSON."""
 
     def identify_all(self, image_bytes: bytes) -> List[dict]:
         """
-        Identify ALL food items visible in a full image.
-
-        Used by LLM-only pipeline.
-
-        Args:
-            image_bytes: Binary image data (PNG/JPEG format)
+        Identify ALL food items in full image.
+        Used by System A (LLM-only).
 
         Returns:
-            List of dicts with name, quantity, packaged for each item
+            List of dicts with name, state for each item
         """
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        prompt = """Analyze this image and identify ALL food items visible.
-For EACH food item, provide details in a JSON array.
-
-Respond with ONLY this JSON format:
-{
-  "foods": [
-    {
-      "name": "Specific name (e.g., 'Blueberries', 'Gnocchi')",
-      "quantity": <number or null if unclear>,
-      "packaged": <true if in package/container, false if loose, null if unclear>
-    }
-  ]
-}
-
-Important:
-- Include ALL distinct food items you can see
-- Packaged foods count (gnocchi, yogurt, etc.)
-- If no food items visible, return {"foods": []}
-
-Return ONLY valid JSON."""
 
         try:
             response = self.client.chat.completions.create(
@@ -124,29 +116,27 @@ Return ONLY valid JSON."""
                 messages=[{
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt},
+                        {"type": "text", "text": FROZEN_PROMPT_MULTI},
                         {"type": "image_url", "image_url": {
                             "url": f"data:image/png;base64,{image_b64}",
                             "detail": "high"
                         }}
                     ]
                 }],
-                max_tokens=1000,
-                temperature=0.1
+                max_tokens=500,
+                temperature=0
             )
 
             content = response.choices[0].message.content.strip()
             content = self._clean_json(content)
             result = json.loads(content)
 
-            foods = result.get("foods", [])
             return [
                 {
-                    "name": f.get("name", "Unknown"),
-                    "quantity": f.get("quantity"),
-                    "packaged": f.get("packaged")
+                    "name": item.get("name", "unknown"),
+                    "state": item.get("state", "unknown")
                 }
-                for f in foods
+                for item in result.get("items", [])
             ]
 
         except Exception as e:
@@ -154,7 +144,7 @@ Return ONLY valid JSON."""
             return []
 
     def _clean_json(self, content: str) -> str:
-        """Remove markdown formatting from JSON response."""
+        """Remove markdown formatting if present."""
         if content.startswith("```"):
             content = content.split("```")[1]
             if content.startswith("json"):

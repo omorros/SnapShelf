@@ -1,55 +1,24 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
 # Virtual Environment
 venv/
 env/
-ENV/
-env.bak/
-venv.bak/
+.venv/
 
-# Environment Variables
+# Environment Variables (contains API key)
 .env
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# YOLO Models (exclude all except the ones we use)
-*.pt
-!yolov8s.pt
-!yolov8s-worldv2.pt
-
-# Data
-data/inventory.json
 
 # OS
 .DS_Store
 Thumbs.db
 
-
-PRD_SnapShelf_Console.md
-claude
-.claude
+# YOLO models (large files - download separately)
+*.pt

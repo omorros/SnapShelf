@@ -1,6 +1,6 @@
 """
-YOLO-LLM hybrid pipeline for food detection.
-Uses YOLO for region proposals, then LLM for per-crop labeling.
+System B: YOLO + LLM hybrid pipeline.
+YOLO proposes regions, LLM identifies per crop, results aggregated.
 """
 
 from pathlib import Path
@@ -11,47 +11,36 @@ from clients.llm_client import LLMClient
 from pipelines.output import PipelineResult, ItemResult, make_result
 
 
-def run_yolo_llm_pipeline(
-    image_path: str,
-    model_path: str = "yolov8s.pt"
-) -> PipelineResult:
+def run(image_path: str) -> PipelineResult:
     """
-    Execute YOLO-LLM hybrid food detection pipeline.
+    Execute YOLO-LLM hybrid pipeline (System B).
 
-    Pipeline steps:
-        1. Run YOLO -> bounding boxes
-        2. Crop boxes (with configurable padding)
-        3. Call LLM per crop
-        4. Aggregate results with basic deduplication
+    Pipeline:
+        1. YOLO proposes regions (class labels ignored)
+        2. LLM identifies food in each crop
+        3. Results aggregated (deduplicated by name)
 
     Args:
-        image_path: Path to the image file
-        model_path: Path to YOLO weights (default: yolov8s.pt)
+        image_path: Path to image file
 
     Returns:
-        PipelineResult with items list and metadata
+        PipelineResult with detected items
     """
-    # Step 1 & 2: Run YOLO detection and crop boxes
-    detector = YOLODetector(model_path=model_path)
+    # Step 1: YOLO region proposals
+    detector = YOLODetector()
     detections = detector.detect_with_fallback(image_path)
 
-    # Step 3: Call LLM per crop
+    # Step 2: LLM per crop
     llm = LLMClient()
     raw_items: List[ItemResult] = []
 
     for detection in detections:
-        image_bytes = detection["image_bytes"]
-        result = llm.identify_single(image_bytes)
-
+        result = llm.identify_single(detection["image_bytes"])
         if result is not None:
-            raw_items.append({
-                "name": result["name"],
-                "quantity": result.get("quantity"),
-                "packaged": result.get("packaged")
-            })
+            raw_items.append(result)
 
-    # Step 4: Basic deduplication by name
-    items = _deduplicate_items(raw_items)
+    # Step 3: Aggregate (deduplicate by name)
+    items = _deduplicate(raw_items)
 
     return make_result(
         items=items,
@@ -60,43 +49,11 @@ def run_yolo_llm_pipeline(
     )
 
 
-def _deduplicate_items(items: List[ItemResult]) -> List[ItemResult]:
-    """
-    Basic deduplication by item name (case-insensitive).
-
-    When duplicates are found:
-        - Keeps first occurrence's name spelling
-        - Sums quantities if both have numeric values
-        - Keeps packaged=True if any instance is packaged
-
-    Args:
-        items: Raw list of detected items
-
-    Returns:
-        Deduplicated list of items
-    """
-    seen: dict = {}  # name_lower -> ItemResult
-
+def _deduplicate(items: List[ItemResult]) -> List[ItemResult]:
+    """Deduplicate items by name (case-insensitive)."""
+    seen = {}
     for item in items:
-        name_lower = item["name"].lower()
-
-        if name_lower not in seen:
-            seen[name_lower] = {
-                "name": item["name"],
-                "quantity": item.get("quantity"),
-                "packaged": item.get("packaged")
-            }
-        else:
-            existing = seen[name_lower]
-
-            # Sum quantities if both are numeric
-            if existing["quantity"] is not None and item.get("quantity") is not None:
-                existing["quantity"] = existing["quantity"] + item["quantity"]
-            elif item.get("quantity") is not None:
-                existing["quantity"] = item["quantity"]
-
-            # Keep packaged=True if any instance is packaged
-            if item.get("packaged") is True:
-                existing["packaged"] = True
-
+        key = item["name"].lower()
+        if key not in seen:
+            seen[key] = item
     return list(seen.values())

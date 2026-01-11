@@ -1,6 +1,6 @@
 """
-LLM-only pipeline for food detection.
-Sends the full image to the LLM for multi-item identification.
+System A: LLM-only pipeline.
+One image in, one structured JSON out.
 """
 
 from pathlib import Path
@@ -11,19 +11,19 @@ from clients.llm_client import LLMClient
 from pipelines.output import PipelineResult, make_result
 
 
-def run_llm_pipeline(image_path: str) -> PipelineResult:
+def run(image_path: str) -> PipelineResult:
     """
-    Execute LLM-only food detection pipeline.
+    Execute LLM-only pipeline (System A).
 
-    Pipeline: Load image -> Send to LLM -> Return all detected items
+    Pipeline: Full image -> LLM identifies all items -> JSON output
 
     Args:
-        image_path: Path to the image file
+        image_path: Path to image file
 
     Returns:
-        PipelineResult with items list and metadata
+        PipelineResult with detected items
     """
-    # Load and encode image
+    # Load image
     image = Image.open(image_path)
     if image.mode != "RGB":
         image = image.convert("RGB")
@@ -32,19 +32,9 @@ def run_llm_pipeline(image_path: str) -> PipelineResult:
     image.save(buffer, format="PNG")
     image_bytes = buffer.getvalue()
 
-    # Run LLM identification
+    # Single LLM call for all items
     llm = LLMClient()
-    foods = llm.identify_all(image_bytes)
-
-    # Convert to standard output format
-    items = [
-        {
-            "name": f["name"],
-            "quantity": f.get("quantity"),
-            "packaged": f.get("packaged")
-        }
-        for f in foods
-    ]
+    items = llm.identify_all(image_bytes)
 
     return make_result(
         items=items,
