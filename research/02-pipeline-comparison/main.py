@@ -1,6 +1,11 @@
 """
 Food Detection Pipeline Comparison
 Research tool comparing LLM-only vs YOLO+LLM hybrid approaches.
+
+Usage:
+    python main.py                         Interactive menu
+    python main.py llm <image_path>        System A: LLM-only
+    python main.py yolo-llm <image_path>   System B: YOLO + LLM hybrid
 """
 
 import sys
@@ -15,6 +20,52 @@ from rich import box
 
 console = Console()
 
+
+# =============================================================================
+# SHARED PIPELINE RUNNER (used by both CLI and Interactive modes)
+# =============================================================================
+
+def run_pipeline(pipeline_type: str, image_path: str) -> dict:
+    """
+    Run selected pipeline and return result.
+    Single source of truth for both CLI and interactive modes.
+
+    Args:
+        pipeline_type: "llm" or "yolo-llm"
+        image_path: Path to image file
+
+    Returns:
+        Pipeline result dict
+    """
+    if pipeline_type == "llm":
+        from pipelines import llm_pipeline
+        return llm_pipeline.run(image_path)
+    else:
+        from pipelines import yolo_llm_pipeline
+        return yolo_llm_pipeline.run(image_path)
+
+
+# =============================================================================
+# CLI MODE
+# =============================================================================
+
+def cli_mode(pipeline: str, image_path: str):
+    """Run in CLI mode - output JSON to stdout."""
+    # Validate image exists
+    if not Path(image_path).exists():
+        print(f"Error: File not found: {image_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Run pipeline
+    result = run_pipeline(pipeline, image_path)
+
+    # Output JSON
+    print(json.dumps(result, indent=2))
+
+
+# =============================================================================
+# INTERACTIVE MODE
+# =============================================================================
 
 def clear_screen():
     """Clear terminal screen."""
@@ -81,9 +132,17 @@ def display_results(result: dict, pipeline_name: str):
         border_style="green"
     ))
 
-    # Image info
-    console.print(f"\n[bold]Image:[/bold] {result['meta']['image']}")
-    console.print(f"[bold]Pipeline:[/bold] {result['meta']['pipeline']}")
+    # Meta info
+    meta = result.get("meta", {})
+    console.print(f"\n[bold]Image:[/bold] {meta.get('image', 'N/A')}")
+    console.print(f"[bold]Pipeline:[/bold] {meta.get('pipeline', 'N/A')}")
+    console.print(f"[bold]Runtime:[/bold] {meta.get('runtime_ms', 0):.0f} ms")
+
+    if meta.get("pipeline") == "yolo-llm":
+        fallback = meta.get("fallback_used", False)
+        fallback_str = "[yellow]Yes[/yellow]" if fallback else "[green]No[/green]"
+        console.print(f"[bold]Fallback used:[/bold] {fallback_str}")
+
     console.print()
 
     # Items table
@@ -111,7 +170,7 @@ def display_results(result: dict, pipeline_name: str):
 
             table.add_row(
                 str(i),
-                item.get("name", "Unknown"),
+                item.get("name", "unknown"),
                 f"[{state_color}]{state}[/{state_color}]"
             )
 
@@ -124,8 +183,8 @@ def display_results(result: dict, pipeline_name: str):
     console.print(f"[dim]{json.dumps(result, indent=2)}[/dim]")
 
 
-def run_pipeline(pipeline_type: str):
-    """Run selected pipeline with file picker."""
+def interactive_run_pipeline(pipeline_type: str):
+    """Run pipeline in interactive mode with file picker and display."""
     # Select image
     image_path = select_image()
 
@@ -141,21 +200,14 @@ def run_pipeline(pipeline_type: str):
 
     with console.status(f"[cyan]Running {pipeline_name}...[/cyan]", spinner="dots"):
         try:
-            if pipeline_type == "llm":
-                from pipelines import llm_pipeline
-                result = llm_pipeline.run(str(path))
-            else:
-                from pipelines import yolo_llm_pipeline
-                result = yolo_llm_pipeline.run(str(path))
-
+            result = run_pipeline(pipeline_type, str(path))
             display_results(result, pipeline_name)
-
         except Exception as e:
             console.print(f"[red]Error: {e}[/red]")
 
 
-def main():
-    """Main application loop."""
+def interactive_mode():
+    """Main interactive application loop."""
     while True:
         clear_screen()
         show_header()
@@ -166,12 +218,12 @@ def main():
         if choice == "1":
             console.print("\n[bold cyan]═══ System A: LLM-only Pipeline ═══[/bold cyan]")
             console.print("[dim]Sends full image to GPT-4o Vision for multi-item detection[/dim]\n")
-            run_pipeline("llm")
+            interactive_run_pipeline("llm")
 
         elif choice == "2":
             console.print("\n[bold cyan]═══ System B: YOLO + LLM Hybrid ═══[/bold cyan]")
             console.print("[dim]YOLO proposes regions → LLM identifies each crop → Results aggregated[/dim]\n")
-            run_pipeline("yolo-llm")
+            interactive_run_pipeline("yolo-llm")
 
         elif choice == "3":
             console.print("\n[cyan]Goodbye![/cyan]")
@@ -183,6 +235,42 @@ def main():
         # Pause before returning to menu
         console.print()
         console.input("[dim]Press Enter to continue...[/dim]")
+
+
+# =============================================================================
+# MAIN ENTRYPOINT
+# =============================================================================
+
+def print_usage():
+    """Print usage and exit."""
+    print(__doc__, file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    """Main entrypoint - route to CLI or Interactive mode."""
+    if len(sys.argv) == 1:
+        # No args: interactive mode
+        interactive_mode()
+
+    elif len(sys.argv) >= 2:
+        pipeline = sys.argv[1].lower()
+
+        # Validate pipeline
+        if pipeline not in ("llm", "yolo-llm"):
+            print(f"Error: Unknown pipeline '{pipeline}'", file=sys.stderr)
+            print("Use 'llm' or 'yolo-llm'", file=sys.stderr)
+            sys.exit(1)
+
+        # CLI mode requires image path
+        if len(sys.argv) < 3:
+            print(f"Error: {pipeline} requires an image path", file=sys.stderr)
+            print_usage()
+
+        cli_mode(pipeline, sys.argv[2])
+
+    else:
+        print_usage()
 
 
 if __name__ == "__main__":
