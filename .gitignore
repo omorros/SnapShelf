@@ -22,6 +22,9 @@ nul
 .vscode/
 .idea/
 
+# Node (mobile app)
+node_modules/
+
 # Claude Code temp files
 tmpclaude-*
 .claude/
