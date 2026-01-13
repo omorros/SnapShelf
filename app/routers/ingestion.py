@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import Optional
+from typing import List, Optional
 
 from app.core.database import get_db
 from app.models.draft_item import DraftItem
 from app.schemas.draft_item import DraftItemResponse
 from app.services.ingestion.barcode_ingestion import barcode_ingestion_service
+from app.services.ingestion.image_ingestion import image_ingestion_service
 
 
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
@@ -98,3 +99,87 @@ async def ingest_barcode(
     db.refresh(db_draft)
 
     return db_draft
+
+
+@router.post("/image", response_model=List[DraftItemResponse], status_code=201)
+async def ingest_image(
+    image: UploadFile = File(..., description="Image of fridge or groceries"),
+    storage_location: str = Form("fridge", description="Where items will be stored"),
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user_id)
+):
+    """
+    Detect food items from image and create draft items.
+
+    Uses GPT-4o Vision to analyze the image and identify food items.
+    Creates a DraftItem for each detected item with predicted expiry dates.
+
+    Workflow:
+    1. Send image to GPT-4o Vision API
+    2. Detect food items and their categories
+    3. Predict expiry dates for each item
+    4. Create DraftItems for user review/confirmation
+
+    Returns a list of DraftItems (one per detected food item).
+    User must confirm each draft to promote to inventory.
+    """
+    # Validate file type
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Please upload an image (JPEG, PNG, etc.)"
+        )
+
+    # Read image bytes
+    try:
+        image_bytes = await image.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to read image file: {str(e)}"
+        )
+
+    # Process image
+    result = image_ingestion_service.ingest_from_image(
+        image_bytes=image_bytes,
+        storage_location=storage_location
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=400,
+            detail=result.error_message or "Failed to process image"
+        )
+
+    # Create a DraftItem for each detected food item
+    created_drafts = []
+    for item in result.detected_items:
+        draft_data = {
+            "name": item.name,
+            "category": item.category,
+            "location": storage_location,
+            "source": "image",
+            "confidence_score": item.confidence_score,
+        }
+
+        # Add expiry prediction if available
+        if item.predicted_expiry:
+            draft_data["expiration_date"] = item.predicted_expiry
+
+        # Add reasoning as notes
+        if item.reasoning:
+            draft_data["notes"] = f"[Image detection - GPT-4o]\n[{item.reasoning}]"
+        else:
+            draft_data["notes"] = "[Image detection - GPT-4o]"
+
+        # Save to database
+        db_draft = DraftItem(
+            user_id=user_id,
+            **draft_data
+        )
+        db.add(db_draft)
+        db.commit()
+        db.refresh(db_draft)
+        created_drafts.append(db_draft)
+
+    return created_drafts
