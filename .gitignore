@@ -16,6 +16,7 @@ venv/
 
 # OS
 .DS_Store
+nul
 
 # IDEs
 .vscode/
