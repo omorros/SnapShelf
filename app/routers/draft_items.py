@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.draft_item import DraftItem
 from app.models.inventory_item import InventoryItem
 from app.schemas.draft_item import DraftItemCreate, DraftItemUpdate, DraftItemResponse
@@ -13,19 +14,11 @@ from app.services.expiry_prediction import expiry_prediction_service
 router = APIRouter(prefix="/draft-items", tags=["draft-items"])
 
 
-def get_current_user_id(x_user_id: str = Header(...)) -> UUID:
-    """Stub authentication - extracts user_id from header"""
-    try:
-        return UUID(x_user_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=401, detail="Invalid user ID")
-
-
 @router.post("", response_model=DraftItemResponse, status_code=201)
 def create_draft_item(
     draft: DraftItemCreate,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id),
+    user_id: UUID = Depends(get_current_user),
     predict_expiry: bool = True
 ):
     """
@@ -70,7 +63,7 @@ def create_draft_item(
 @router.get("", response_model=List[DraftItemResponse])
 def list_draft_items(
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """List all draft items for the current user"""
     drafts = db.query(DraftItem).filter(DraftItem.user_id == user_id).all()
@@ -81,7 +74,7 @@ def list_draft_items(
 def get_draft_item(
     draft_id: UUID,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """Get a specific draft item"""
     draft = db.query(DraftItem).filter(
@@ -100,7 +93,7 @@ def update_draft_item(
     draft_id: UUID,
     updates: DraftItemUpdate,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """Update a draft item before confirmation"""
     draft = db.query(DraftItem).filter(
@@ -125,7 +118,7 @@ def update_draft_item(
 def delete_draft_item(
     draft_id: UUID,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """Discard a draft item"""
     draft = db.query(DraftItem).filter(
@@ -146,7 +139,7 @@ def confirm_draft_item(
     draft_id: UUID,
     confirmation: InventoryItemCreate,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """
     SACRED OPERATION: Confirm a draft item and promote it to inventory.

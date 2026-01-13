@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.inventory_item import InventoryItem
 from app.schemas.inventory_item import (
     InventoryItemResponse,
@@ -13,18 +14,10 @@ from app.schemas.inventory_item import (
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
-def get_current_user_id(x_user_id: str = Header(...)) -> UUID:
-    """Stub authentication - extracts user_id from header"""
-    try:
-        return UUID(x_user_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=401, detail="Invalid user ID")
-
-
 @router.get("", response_model=List[InventoryItemResponse])
 def list_inventory_items(
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """List all confirmed inventory items for the current user"""
     items = db.query(InventoryItem).filter(
@@ -37,7 +30,7 @@ def list_inventory_items(
 def get_inventory_item(
     item_id: UUID,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """Get a specific inventory item"""
     item = db.query(InventoryItem).filter(
@@ -56,7 +49,7 @@ def update_inventory_quantity(
     item_id: UUID,
     update: InventoryItemUpdateQuantity,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """
     Update quantity of an inventory item.
@@ -81,7 +74,7 @@ def update_inventory_quantity(
 def delete_inventory_item(
     item_id: UUID,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """
     Delete an inventory item (e.g., when consumed or thrown away)

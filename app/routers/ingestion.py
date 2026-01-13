@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from uuid import UUID
-from typing import List, Optional
+from typing import List
 
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.draft_item import DraftItem
 from app.schemas.draft_item import DraftItemResponse
 from app.services.ingestion.barcode_ingestion import barcode_ingestion_service
@@ -13,20 +14,12 @@ from app.services.ingestion.image_ingestion import image_ingestion_service
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
 
 
-def get_current_user_id(x_user_id: str = Header(...)) -> UUID:
-    """Stub authentication - extracts user_id from header"""
-    try:
-        return UUID(x_user_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=401, detail="Invalid user ID")
-
-
 @router.post("/barcode", response_model=DraftItemResponse, status_code=201)
 async def ingest_barcode(
     image: UploadFile = File(..., description="Image file containing barcode"),
     storage_location: str = Form("fridge", description="Where the item will be stored"),
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """
     Scan barcode from image and create draft item.
@@ -106,7 +99,7 @@ async def ingest_image(
     image: UploadFile = File(..., description="Image of fridge or groceries"),
     storage_location: str = Form("fridge", description="Where items will be stored"),
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id)
+    user_id: UUID = Depends(get_current_user)
 ):
     """
     Detect food items from image and create draft items.
