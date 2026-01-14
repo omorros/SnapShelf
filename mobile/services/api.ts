@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, LoginCredentials, RegisterCredentials } from '../types';
+import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, LoginCredentials, RegisterCredentials, BarcodeLookupResult } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
@@ -175,6 +175,23 @@ class ApiService {
 
     // Immediately confirm it
     return this.confirmDraftItem(draft.id, data);
+  }
+
+  // Barcode lookup endpoint
+  async lookupBarcode(barcode: string, storageLocation: string = 'fridge'): Promise<BarcodeLookupResult> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/ingest/barcode/${barcode}?storage_location=${storageLocation}`,
+      {
+        headers: await this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to lookup barcode');
+    }
+
+    return response.json();
   }
 
   // Image ingestion endpoint

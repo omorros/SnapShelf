@@ -96,3 +96,16 @@ export interface RegisterCredentials {
   email: string;
   password: string;
 }
+
+// Barcode lookup response
+export interface BarcodeLookupResult {
+  barcode: string;
+  name: string;
+  category: string | null;
+  brand: string | null;
+  image_url: string | null;
+  predicted_expiry: string | null;
+  confidence_score: number | null;
+  reasoning: string | null;
+  found_in_database: boolean;
+}

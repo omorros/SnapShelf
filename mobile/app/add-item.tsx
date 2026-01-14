@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,17 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { api } from '../services/api';
-import { DraftItem, InventoryItemCreate, CATEGORIES, UNITS } from '../types';
+import { DraftItem, InventoryItemCreate, BarcodeLookupResult, CATEGORIES, UNITS } from '../types';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // Types for detected items
 interface DetectedItem {
@@ -29,14 +33,21 @@ interface DetectedItem {
 }
 
 // Screen modes
-type ScreenMode = 'options' | 'scanning' | 'detected' | 'manual';
+type ScreenMode = 'options' | 'scanning' | 'detected' | 'manual' | 'barcode';
 
 export default function AddItemScreen() {
   const router = useRouter();
+  const [permission, requestPermission] = useCameraPermissions();
 
   // Screen state
   const [mode, setMode] = useState<ScreenMode>('options');
   const [loading, setLoading] = useState(false);
+
+  // Barcode scanner state
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [barcodeResult, setBarcodeResult] = useState<BarcodeLookupResult | null>(null);
+  const lastScannedRef = useRef<string | null>(null);
 
   // Detected items state
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
@@ -113,34 +124,67 @@ export default function AddItemScreen() {
     }
   };
 
-  // Handle barcode scan
+  // Handle barcode scan - open camera scanner
   const handleScanBarcode = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow camera access');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (result.canceled) return;
-
-    setMode('scanning');
-    setLoading(true);
-    try {
-      const drafts = await api.ingestImage(result.assets[0].uri, 'fridge');
-      if (drafts.length > 0) {
-        setDetectedItems(drafts.map(draftToDetected));
-        setMode('detected');
-      } else {
-        Alert.alert('No barcode found', 'Try again or add manually');
-        setMode('options');
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert('Permission needed', 'Please allow camera access to scan barcodes');
+        return;
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to scan barcode');
-      setMode('options');
-    } finally {
-      setLoading(false);
     }
+    // Reset barcode state
+    setScannedBarcode(null);
+    setBarcodeResult(null);
+    setBarcodeLoading(false);
+    lastScannedRef.current = null;
+    setMode('barcode');
+  };
+
+  // Handle barcode detected by camera
+  const handleBarcodeScanned = async (data: string) => {
+    // Prevent duplicate scans
+    if (lastScannedRef.current === data || barcodeLoading) return;
+    lastScannedRef.current = data;
+
+    setScannedBarcode(data);
+    setBarcodeLoading(true);
+
+    try {
+      const result = await api.lookupBarcode(data);
+      setBarcodeResult(result);
+    } catch (error: any) {
+      Alert.alert('Lookup Failed', error.message || 'Could not look up barcode');
+      setBarcodeResult(null);
+    } finally {
+      setBarcodeLoading(false);
+    }
+  };
+
+  // Use the scanned barcode result
+  const useBarcodeResult = () => {
+    if (!barcodeResult) return;
+
+    // Convert to detected item format
+    const detectedItem: DetectedItem = {
+      id: `barcode-${barcodeResult.barcode}`,
+      name: barcodeResult.name,
+      category: barcodeResult.category || 'Other',
+      quantity: 1,
+      unit: 'Pieces',
+      expiryDate: barcodeResult.predicted_expiry || '',
+      confirmed: false,
+    };
+
+    setDetectedItems([detectedItem]);
+    setMode('detected');
+  };
+
+  // Scan another barcode
+  const scanAnotherBarcode = () => {
+    setScannedBarcode(null);
+    setBarcodeResult(null);
+    lastScannedRef.current = null;
   };
 
   // Handle manual entry
@@ -256,10 +300,13 @@ export default function AddItemScreen() {
 
   // Go back to options
   const handleBack = () => {
-    if (mode === 'manual' || mode === 'detected') {
+    if (mode === 'manual' || mode === 'detected' || mode === 'barcode') {
       setMode('options');
       setDetectedItems([]);
       resetManualForm();
+      setScannedBarcode(null);
+      setBarcodeResult(null);
+      lastScannedRef.current = null;
     } else {
       router.back();
     }
@@ -311,6 +358,99 @@ export default function AddItemScreen() {
     <View style={styles.scanningContainer}>
       <ActivityIndicator size="large" color="#2e7d32" />
       <Text style={styles.scanningText}>Detecting items...</Text>
+    </View>
+  );
+
+  // Render barcode scanner view
+  const renderBarcodeScanner = () => (
+    <View style={styles.barcodeScannerContainer}>
+      <CameraView
+        style={styles.camera}
+        facing="back"
+        barcodeScannerSettings={{
+          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93'],
+        }}
+        onBarcodeScanned={(result) => handleBarcodeScanned(result.data)}
+      >
+        {/* Scanning overlay */}
+        <View style={styles.scannerOverlay}>
+          {/* Top dark area */}
+          <View style={styles.overlayTop} />
+
+          {/* Middle row with scanning frame */}
+          <View style={styles.overlayMiddle}>
+            <View style={styles.overlaySide} />
+            <View style={styles.scanFrame}>
+              {/* Corner brackets */}
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
+              {/* Barcode icon in center */}
+              {!scannedBarcode && (
+                <Ionicons name="barcode-outline" size={48} color="rgba(255,255,255,0.5)" />
+              )}
+            </View>
+            <View style={styles.overlaySide} />
+          </View>
+
+          {/* Bottom dark area */}
+          <View style={styles.overlayBottom} />
+        </View>
+      </CameraView>
+
+      {/* Bottom panel */}
+      <View style={styles.barcodePanel}>
+        {!scannedBarcode ? (
+          <>
+            <Text style={styles.barcodePanelTitle}>Scanning barcode...</Text>
+            <Text style={styles.barcodePanelSubtitle}>Place barcode in frame</Text>
+          </>
+        ) : barcodeLoading ? (
+          <>
+            <ActivityIndicator size="small" color="#2e7d32" />
+            <Text style={styles.barcodePanelTitle}>Loading from Open Food Facts...</Text>
+            <Text style={styles.barcodePanelSubtitle}>Barcode: {scannedBarcode}</Text>
+          </>
+        ) : barcodeResult ? (
+          <>
+            <Text style={styles.barcodePanelTitle} numberOfLines={2}>
+              {barcodeResult.name}
+            </Text>
+            {barcodeResult.brand && (
+              <Text style={styles.barcodePanelBrand}>{barcodeResult.brand}</Text>
+            )}
+            <Text style={styles.barcodePanelSubtitle}>Barcode: {scannedBarcode}</Text>
+            {!barcodeResult.found_in_database && (
+              <Text style={styles.barcodePanelWarning}>Not found in database - you can edit details</Text>
+            )}
+          </>
+        ) : (
+          <>
+            <Text style={styles.barcodePanelTitle}>Barcode: {scannedBarcode}</Text>
+            <Text style={styles.barcodePanelWarning}>Could not look up product</Text>
+          </>
+        )}
+
+        {/* Action buttons */}
+        <View style={styles.barcodePanelButtons}>
+          <TouchableOpacity style={styles.barcodeCancelButton} onPress={handleBack}>
+            <Text style={styles.barcodeCancelText}>Cancel</Text>
+          </TouchableOpacity>
+
+          {scannedBarcode && !barcodeLoading && (
+            <TouchableOpacity style={styles.barcodeScanButton} onPress={scanAnotherBarcode}>
+              <Text style={styles.barcodeScanText}>Scan</Text>
+            </TouchableOpacity>
+          )}
+
+          {barcodeResult && (
+            <TouchableOpacity style={styles.barcodeUseButton} onPress={useBarcodeResult}>
+              <Text style={styles.barcodeUseText}>Use</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     </View>
   );
 
@@ -611,6 +751,16 @@ export default function AddItemScreen() {
       </View>
     </Modal>
   );
+
+  // For barcode mode, render without the normal header
+  if (mode === 'barcode') {
+    return (
+      <View style={styles.container}>
+        {renderBarcodeScanner()}
+        {renderEditModal()}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -1012,5 +1162,145 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     color: '#333',
+  },
+
+  // Barcode Scanner Styles
+  barcodeScannerContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    flex: 1,
+  },
+  overlayTop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  overlayMiddle: {
+    flexDirection: 'row',
+  },
+  overlaySide: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  scanFrame: {
+    width: SCREEN_WIDTH * 0.75,
+    height: SCREEN_WIDTH * 0.45,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  corner: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderColor: '#fff',
+  },
+  cornerTL: {
+    top: -2,
+    left: -2,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 16,
+  },
+  cornerTR: {
+    top: -2,
+    right: -2,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 16,
+  },
+  cornerBL: {
+    bottom: -2,
+    left: -2,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 16,
+  },
+  cornerBR: {
+    bottom: -2,
+    right: -2,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 16,
+  },
+  overlayBottom: {
+    flex: 1.5,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  barcodePanel: {
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 40,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    alignItems: 'center',
+  },
+  barcodePanelTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  barcodePanelBrand: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 4,
+  },
+  barcodePanelSubtitle: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 8,
+  },
+  barcodePanelWarning: {
+    fontSize: 13,
+    color: '#f57c00',
+    marginBottom: 8,
+  },
+  barcodePanelButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  barcodeCancelButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#d32f2f',
+  },
+  barcodeCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  barcodeScanButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#2e7d32',
+  },
+  barcodeScanText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  barcodeUseButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#1976d2',
+  },
+  barcodeUseText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

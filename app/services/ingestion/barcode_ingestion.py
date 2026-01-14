@@ -39,6 +39,51 @@ class BarcodeIngestionService:
     4. Return draft item data
     """
 
+    def ingest_from_barcode(self, barcode: str, storage_location: str = "fridge") -> BarcodeIngestionResult:
+        """
+        Process barcode string and return draft item data.
+
+        Args:
+            barcode: Barcode string (EAN-13, UPC-A, etc.)
+            storage_location: Where user will store the item (for expiry prediction)
+
+        Returns:
+            BarcodeIngestionResult with product info and predictions
+        """
+        # Look up product in Open Food Facts
+        product_info = openfoodfacts_client.lookup_product(barcode)
+
+        if not product_info:
+            # Barcode not in database - return partial success
+            return BarcodeIngestionResult(
+                success=True,
+                barcode=barcode,
+                product_info=None,
+                name=f"Product {barcode}",
+                error_message=f"Barcode {barcode} not found in database. Please enter product details manually."
+            )
+
+        # Predict expiry date
+        prediction = expiry_prediction_service.predict_expiry(
+            name=product_info.name,
+            category=product_info.category,
+            storage_location=storage_location
+        )
+
+        # Return complete draft item data
+        return BarcodeIngestionResult(
+            success=True,
+            barcode=barcode,
+            product_info=product_info,
+            name=product_info.name,
+            category=product_info.category,
+            brand=product_info.brand,
+            image_url=product_info.image_url,
+            predicted_expiry=prediction.expiry_date.isoformat(),
+            confidence_score=prediction.confidence,
+            reasoning=prediction.reasoning
+        )
+
     def ingest_from_image(self, image_bytes: bytes, storage_location: str = "fridge") -> BarcodeIngestionResult:
         """
         Process barcode image and return draft item data.

@@ -14,6 +14,49 @@ from app.services.ingestion.image_ingestion import image_ingestion_service
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
 
 
+@router.get("/barcode/{barcode}")
+async def lookup_barcode(
+    barcode: str,
+    storage_location: str = "fridge",
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Look up product info by barcode string.
+
+    This is for real-time barcode scanning - the mobile app detects the barcode
+    and sends just the string. Returns product info without creating a draft.
+
+    Args:
+        barcode: The barcode string (EAN-13, UPC-A, etc.)
+        storage_location: Where the item will be stored (for expiry prediction)
+
+    Returns:
+        Product info with predicted expiry date
+    """
+    result = barcode_ingestion_service.ingest_from_barcode(
+        barcode=barcode,
+        storage_location=storage_location
+    )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=400,
+            detail=result.error_message or "Failed to process barcode"
+        )
+
+    return {
+        "barcode": result.barcode,
+        "name": result.name,
+        "category": result.category,
+        "brand": result.brand,
+        "image_url": result.image_url,
+        "predicted_expiry": result.predicted_expiry,
+        "confidence_score": result.confidence_score,
+        "reasoning": result.reasoning,
+        "found_in_database": result.product_info is not None,
+    }
+
+
 @router.post("/barcode", response_model=DraftItemResponse, status_code=201)
 async def ingest_barcode(
     image: UploadFile = File(..., description="Image file containing barcode"),
