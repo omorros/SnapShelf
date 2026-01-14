@@ -24,6 +24,16 @@ class InventoryItemUpdateQuantity(BaseModel):
     quantity: float = Field(..., gt=0)
 
 
+class InventoryItemUpdate(BaseModel):
+    """Schema for updating inventory item fields"""
+    name: str | None = Field(None, min_length=1, max_length=255)
+    category: str | None = Field(None, min_length=1)
+    quantity: float | None = Field(None, gt=0)
+    unit: str | None = Field(None, min_length=1)
+    storage_location: str | None = Field(None, min_length=1)
+    expiry_date: date | None = None
+
+
 class InventoryItemResponse(InventoryItemBase):
     """Schema for InventoryItem response"""
     id: UUID

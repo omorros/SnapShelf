@@ -8,7 +8,8 @@ from app.core.security import get_current_user
 from app.models.inventory_item import InventoryItem
 from app.schemas.inventory_item import (
     InventoryItemResponse,
-    InventoryItemUpdateQuantity
+    InventoryItemUpdateQuantity,
+    InventoryItemUpdate
 )
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -64,6 +65,36 @@ def update_inventory_quantity(
         raise HTTPException(status_code=404, detail="Inventory item not found")
 
     item.quantity = update.quantity
+    db.commit()
+    db.refresh(item)
+
+    return item
+
+
+@router.put("/{item_id}", response_model=InventoryItemResponse)
+def update_inventory_item(
+    item_id: UUID,
+    update: InventoryItemUpdate,
+    db: Session = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    """
+    Update an inventory item's fields.
+    Only provided fields will be updated.
+    """
+    item = db.query(InventoryItem).filter(
+        InventoryItem.id == item_id,
+        InventoryItem.user_id == user_id
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    # Update only provided fields
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(item, field, value)
+
     db.commit()
     db.refresh(item)
 

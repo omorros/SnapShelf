@@ -49,6 +49,15 @@ export interface InventoryItemCreate {
   expiry_date: string;
 }
 
+export interface InventoryItemUpdate {
+  name?: string;
+  category?: string;
+  quantity?: number;
+  unit?: string;
+  storage_location?: string;
+  expiry_date?: string;
+}
+
 export interface DraftItemCreate {
   name: string;
   quantity?: number | null;

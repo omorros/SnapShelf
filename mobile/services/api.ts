@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, LoginCredentials, RegisterCredentials, BarcodeLookupResult } from '../types';
+import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
@@ -156,6 +156,21 @@ class ApiService {
     if (!response.ok) {
       throw new Error('Failed to delete inventory item');
     }
+  }
+
+  async updateInventoryItem(id: string, data: InventoryItemUpdate): Promise<InventoryItem> {
+    const response = await fetch(`${API_BASE_URL}/api/inventory/${id}`, {
+      method: 'PUT',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update inventory item');
+    }
+
+    return response.json();
   }
 
   // Helper: Add item directly to inventory (creates draft + confirms in one step)
