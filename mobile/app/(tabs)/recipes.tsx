@@ -95,16 +95,39 @@ export default function RecipesScreen() {
   };
 
   const handleGenerateRecipes = async () => {
-    if (selectedIngredients.length === 0) {
+    // In manual mode, require user selection
+    if (mode === 'manual' && selectedIngredients.length === 0) {
       Alert.alert('No Ingredients', 'Please select at least one ingredient');
+      return;
+    }
+
+    // In expiring mode, need at least some inventory
+    if (mode === 'expiring' && inventoryItems.length === 0) {
+      Alert.alert('No Inventory', 'Add some items to your inventory first');
       return;
     }
 
     setGenerating(true);
     setRecipes([]);
     try {
+      let ingredientsToSend: IngredientInput[];
+
+      if (mode === 'expiring') {
+        // Send ALL inventory items - LLM will prioritize expiring ones based on dates
+        // This allows complete recipes using non-expiring items as complement
+        ingredientsToSend = inventoryItems.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          expiry_date: item.expiry_date,
+        }));
+      } else {
+        // Manual mode: only use exactly what user selected
+        ingredientsToSend = selectedIngredients;
+      }
+
       const response = await api.generateRecipes({
-        ingredients: selectedIngredients,
+        ingredients: ingredientsToSend,
         max_recipes: 3,
       });
       setRecipes(response.recipes);
@@ -265,33 +288,42 @@ export default function RecipesScreen() {
 
       {/* Mode-specific content */}
       {mode === 'expiring' ? (
-        /* Expiring Mode - Show summary, AI selects automatically */
+        /* Expiring Mode - Prioritize expiring items, use all inventory */
         <View style={styles.expiringModeSection}>
           <View style={styles.expiringModeContent}>
             <Ionicons name="flash" size={32} color="#2e7d32" />
             <Text style={styles.expiringModeTitle}>Smart Recipe Mode</Text>
             <Text style={styles.expiringModeText}>
-              AI will automatically use your {selectedIngredients.length} expiring item
-              {selectedIngredients.length !== 1 ? 's' : ''} to suggest recipes
+              {selectedIngredients.length > 0
+                ? `AI will prioritize your ${selectedIngredients.length} expiring item${selectedIngredients.length !== 1 ? 's' : ''} and use other ingredients to create complete recipes`
+                : `AI will suggest recipes using your ${inventoryItems.length} inventory item${inventoryItems.length !== 1 ? 's' : ''}`}
             </Text>
             {selectedIngredients.length > 0 && (
-              <View style={styles.expiringItemsList}>
-                {selectedIngredients.slice(0, 5).map((item, index) => (
-                  <View key={index} style={styles.expiringItemChip}>
-                    <Ionicons name="warning" size={12} color="#f57c00" />
-                    <Text style={styles.expiringItemText}>{item.name}</Text>
-                  </View>
-                ))}
-                {selectedIngredients.length > 5 && (
-                  <Text style={styles.moreItemsText}>
-                    +{selectedIngredients.length - 5} more
-                  </Text>
-                )}
-              </View>
+              <>
+                <Text style={styles.priorityLabel}>Priority items (expiring soon):</Text>
+                <View style={styles.expiringItemsList}>
+                  {selectedIngredients.slice(0, 5).map((item, index) => (
+                    <View key={index} style={styles.expiringItemChip}>
+                      <Ionicons name="warning" size={12} color="#f57c00" />
+                      <Text style={styles.expiringItemText}>{item.name}</Text>
+                    </View>
+                  ))}
+                  {selectedIngredients.length > 5 && (
+                    <Text style={styles.moreItemsText}>
+                      +{selectedIngredients.length - 5} more
+                    </Text>
+                  )}
+                </View>
+              </>
             )}
-            {selectedIngredients.length === 0 && (
+            {selectedIngredients.length === 0 && inventoryItems.length > 0 && (
               <Text style={styles.noExpiringText}>
-                No items expiring in the next 3 days
+                No items expiring soon - recipes will use your full inventory
+              </Text>
+            )}
+            {inventoryItems.length === 0 && (
+              <Text style={styles.noExpiringText}>
+                Add items to your inventory to get started
               </Text>
             )}
           </View>
@@ -337,10 +369,17 @@ export default function RecipesScreen() {
       <TouchableOpacity
         style={[
           styles.generateButton,
-          (selectedIngredients.length === 0 || generating) && styles.generateButtonDisabled,
+          ((mode === 'manual' && selectedIngredients.length === 0) ||
+            (mode === 'expiring' && inventoryItems.length === 0) ||
+            generating) &&
+            styles.generateButtonDisabled,
         ]}
         onPress={handleGenerateRecipes}
-        disabled={selectedIngredients.length === 0 || generating}
+        disabled={
+          (mode === 'manual' && selectedIngredients.length === 0) ||
+          (mode === 'expiring' && inventoryItems.length === 0) ||
+          generating
+        }
       >
         {generating ? (
           <ActivityIndicator color="#fff" />
@@ -591,6 +630,12 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginBottom: 16,
+  },
+  priorityLabel: {
+    fontSize: 13,
+    color: '#f57c00',
+    fontWeight: '600',
+    marginBottom: 8,
   },
   expiringItemsList: {
     flexDirection: 'row',
