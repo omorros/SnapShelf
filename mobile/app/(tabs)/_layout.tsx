@@ -35,15 +35,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="drafts"
+        name="recipes"
         options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          href: null,
+          title: 'Recipes',
+          headerTitle: 'Recipe Ideas',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="restaurant" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>

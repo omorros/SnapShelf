@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app.core.database import engine, Base
 from app.models import user, draft_item, inventory_item  # noqa: F401
-from app.routers import auth, draft_items, inventory_items, expiry_prediction, ingestion
+from app.routers import auth, draft_items, inventory_items, expiry_prediction, ingestion, recipes
 
 
 app = FastAPI(
@@ -17,6 +17,7 @@ app.include_router(draft_items.router, prefix="/api")
 app.include_router(inventory_items.router, prefix="/api")
 app.include_router(expiry_prediction.router, prefix="/api")
 app.include_router(ingestion.router, prefix="/api")
+app.include_router(recipes.router, prefix="/api")
 
 
 @app.get("/health")

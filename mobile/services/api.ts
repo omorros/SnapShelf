@@ -1,10 +1,10 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult } from '../types';
+import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
 // const API_BASE_URL = 'http://localhost:8000'; // iOS simulator
-const API_BASE_URL = 'http://172.20.10.4:8000'; // Physical device (your WiFi IP)
+const API_BASE_URL = 'http://192.168.0.140:8000'; // Physical device (your WiFi IP)
 
 const TOKEN_KEY = 'auth_token';
 
@@ -239,6 +239,37 @@ class ApiService {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to process image');
+    }
+
+    return response.json();
+  }
+
+  // Recipe endpoints
+  async generateRecipes(request: RecipeGenerationRequest): Promise<RecipeGenerationResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/generate`, {
+      method: 'POST',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to generate recipes');
+    }
+
+    return response.json();
+  }
+
+  async getExpiringIngredients(days: number = 3): Promise<IngredientInput[]> {
+    const response = await fetch(
+      `${API_BASE_URL}/api/recipes/expiring-ingredients?days=${days}`,
+      {
+        headers: await this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch expiring ingredients');
     }
 
     return response.json();

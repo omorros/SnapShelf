@@ -118,3 +118,39 @@ export interface BarcodeLookupResult {
   reasoning: string | null;
   found_in_database: boolean;
 }
+
+// Recipe Types
+export interface IngredientInput {
+  name: string;
+  quantity?: number;
+  unit?: string;
+  expiry_date?: string;
+}
+
+export interface RecipeGenerationRequest {
+  ingredients: IngredientInput[];
+  max_recipes?: number;
+}
+
+export interface RecipeIngredient {
+  name: string;
+  quantity: string;
+  from_inventory: boolean;
+}
+
+export interface Recipe {
+  title: string;
+  description: string;
+  cooking_time_minutes: number;
+  servings: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  tips?: string | null;
+}
+
+export interface RecipeGenerationResponse {
+  recipes: Recipe[];
+  ingredients_used: string[];
+  ingredients_missing: string[];
+}
