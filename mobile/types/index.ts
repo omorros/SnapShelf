@@ -49,6 +49,43 @@ export interface InventoryItemCreate {
   expiry_date: string;
 }
 
+export interface DraftItemCreate {
+  name: string;
+  quantity?: number | null;
+  unit?: string | null;
+  expiration_date?: string | null;
+  category?: string | null;
+  location?: string | null;
+  notes?: string | null;
+  source?: string | null;
+  confidence_score?: number | null;
+}
+
+// Category options
+export const CATEGORIES = [
+  'Fruits',
+  'Vegetables',
+  'Dairy',
+  'Meat',
+  'Fish',
+  'Grains',
+  'Snacks',
+  'Beverages',
+  'Frozen',
+  'Condiments',
+  'Other',
+] as const;
+
+// Unit options
+export const UNITS = [
+  'Pieces',
+  'Grams',
+  'Kilograms',
+  'Liters',
+  'Milliliters',
+  'Packages',
+] as const;
+
 // Auth Types
 export interface LoginCredentials {
   email: string;

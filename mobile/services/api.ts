@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, InventoryItem, InventoryItemCreate, LoginCredentials, RegisterCredentials } from '../types';
+import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, LoginCredentials, RegisterCredentials } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
@@ -93,6 +93,21 @@ class ApiService {
     return response.json();
   }
 
+  async createDraftItem(data: DraftItemCreate): Promise<DraftItem> {
+    const response = await fetch(`${API_BASE_URL}/api/draft-items`, {
+      method: 'POST',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to create draft item');
+    }
+
+    return response.json();
+  }
+
   async deleteDraftItem(id: string): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/api/draft-items/${id}`, {
       method: 'DELETE',
@@ -141,6 +156,25 @@ class ApiService {
     if (!response.ok) {
       throw new Error('Failed to delete inventory item');
     }
+  }
+
+  // Helper: Add item directly to inventory (creates draft + confirms in one step)
+  async addToInventory(data: InventoryItemCreate): Promise<InventoryItem> {
+    // First create a draft
+    const draftData: DraftItemCreate = {
+      name: data.name,
+      category: data.category,
+      quantity: data.quantity,
+      unit: data.unit,
+      expiration_date: data.expiry_date,
+      location: data.storage_location,
+      source: 'manual',
+    };
+
+    const draft = await this.createDraftItem(draftData);
+
+    // Immediately confirm it
+    return this.confirmDraftItem(draft.id, data);
   }
 
   // Image ingestion endpoint

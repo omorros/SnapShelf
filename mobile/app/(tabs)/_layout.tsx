@@ -25,33 +25,25 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="scan"
+        name="inventory"
         options={{
-          title: 'Scan',
-          headerTitle: 'Add Food',
+          title: 'My Foods',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="camera" size={size} color={color} />
+            <Ionicons name="nutrition" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="drafts"
         options={{
-          title: 'Pending',
-          headerTitle: 'Pending Items',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="clipboard" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
-        name="inventory"
+        name="scan"
         options={{
-          title: 'Inventory',
-          headerTitle: 'My Inventory',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

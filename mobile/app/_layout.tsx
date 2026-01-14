@@ -18,7 +18,7 @@ function RootLayoutNav() {
       router.replace('/(auth)/login');
     } else if (isAuthenticated && inAuthGroup) {
       // Redirect to main app if authenticated
-      router.replace('/(tabs)/scan');
+      router.replace('/(tabs)/inventory');
     }
   }, [isAuthenticated, isLoading, segments]);
 
@@ -31,6 +31,13 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="add-item"
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </>

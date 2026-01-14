@@ -9,7 +9,7 @@ export default function Index() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/scan" />;
+    return <Redirect href="/(tabs)/inventory" />;
   }
 
   return <Redirect href="/(auth)/login" />;
