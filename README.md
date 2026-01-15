@@ -74,11 +74,11 @@ SnapShelf is a full-stack mobile application that helps users track their food i
          │
     ┌────┴────┐
     ▼         ▼
-┌────────┐ ┌──────────┐
-│ SQLite │ │ OpenAI & │
-│  DB    │ │ External │
-│        │ │   APIs   │
-└────────┘ └──────────┘
+┌────────────┐ ┌──────────┐
+│ PostgreSQL │ │ OpenAI & │
+│     DB     │ │ External │
+│            │ │   APIs   │
+└────────────┘ └──────────┘
 ```
 
 ### Core Data Models
