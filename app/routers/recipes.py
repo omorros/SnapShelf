@@ -26,8 +26,13 @@ async def generate_recipes(
     """
     Generate recipe suggestions based on provided ingredients.
 
-    The LLM will prioritize ingredients marked with near expiry dates
-    to help reduce food waste.
+    Supports two modes:
+    - "auto" (default): Automatically prioritize expiring ingredients
+    - "manual": User-selected ingredients are mandatory, still applies expiry logic
+
+    Optional preferences:
+    - time_preference: "quick" (<30min), "normal" (30-60min), "any" (default)
+    - servings: Target portions (1-6, default 2)
     """
     if not request.ingredients:
         raise HTTPException(
@@ -38,7 +43,11 @@ async def generate_recipes(
     try:
         result = recipe_generation_service.generate_recipes(
             ingredients=request.ingredients,
-            max_recipes=request.max_recipes
+            max_recipes=request.max_recipes,
+            mode=request.mode,
+            selected_ingredient_names=request.selected_ingredient_names,
+            time_preference=request.time_preference,
+            servings=request.servings
         )
         return result
     except RuntimeError as e:

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 class IngredientInput(BaseModel):
@@ -14,6 +14,10 @@ class RecipeGenerationRequest(BaseModel):
     """Request payload for recipe generation"""
     ingredients: List[IngredientInput] = Field(..., min_length=1)
     max_recipes: int = Field(default=3, ge=1, le=5)
+    mode: Literal["auto", "manual"] = "auto"
+    selected_ingredient_names: Optional[List[str]] = None  # For manual mode
+    time_preference: Literal["quick", "normal", "any"] = "any"
+    servings: int = Field(default=2, ge=1, le=6)
 
 
 class RecipeIngredient(BaseModel):
@@ -21,6 +25,8 @@ class RecipeIngredient(BaseModel):
     name: str
     quantity: str
     from_inventory: bool = False
+    is_expiring_soon: bool = False  # True if within 3 days of expiry
+    days_until_expiry: Optional[int] = None  # For highlighting urgency
 
 
 class RecipeResponse(BaseModel):
@@ -33,6 +39,7 @@ class RecipeResponse(BaseModel):
     ingredients: List[RecipeIngredient]
     instructions: List[str]
     tips: Optional[str] = None
+    recommendation_reason: str = ""  # e.g., "Uses 3 items expiring in the next 2 days"
 
 
 class RecipeGenerationResponse(BaseModel):

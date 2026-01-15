@@ -127,15 +127,24 @@ export interface IngredientInput {
   expiry_date?: string;
 }
 
+export type RecipeMode = 'auto' | 'manual';
+export type TimePreference = 'quick' | 'normal' | 'any';
+
 export interface RecipeGenerationRequest {
   ingredients: IngredientInput[];
   max_recipes?: number;
+  mode?: RecipeMode;
+  selected_ingredient_names?: string[];
+  time_preference?: TimePreference;
+  servings?: number;
 }
 
 export interface RecipeIngredient {
   name: string;
   quantity: string;
   from_inventory: boolean;
+  is_expiring_soon: boolean;
+  days_until_expiry?: number | null;
 }
 
 export interface Recipe {
@@ -147,6 +156,7 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   instructions: string[];
   tips?: string | null;
+  recommendation_reason: string;
 }
 
 export interface RecipeGenerationResponse {

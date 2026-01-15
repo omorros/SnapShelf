@@ -20,6 +20,7 @@ import {
   InventoryItem,
   IngredientInput,
   Recipe,
+  TimePreference,
 } from '../../types';
 import { colors, typography, spacing, radius, shadows, getExpiryColor } from '../../theme';
 
@@ -37,6 +38,11 @@ export default function RecipesScreen() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
+
+  // Preferences state
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [timePreference, setTimePreference] = useState<TimePreference>('any');
+  const [servings, setServings] = useState(2);
 
   // Animation
   const headerOpacity = useRef(new Animated.Value(0)).current;
@@ -121,22 +127,26 @@ export default function RecipesScreen() {
     setGenerating(true);
     setRecipes([]);
     try {
-      let ingredientsToSend: IngredientInput[];
+      // Always send all inventory items with expiry dates
+      const ingredientsToSend: IngredientInput[] = inventoryItems.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        expiry_date: item.expiry_date,
+      }));
 
-      if (mode === 'expiring') {
-        ingredientsToSend = inventoryItems.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-          expiry_date: item.expiry_date,
-        }));
-      } else {
-        ingredientsToSend = selectedIngredients;
-      }
+      // For manual mode, also pass the selected ingredient names
+      const selectedNames = mode === 'manual'
+        ? selectedIngredients.map((i) => i.name)
+        : undefined;
 
       const response = await api.generateRecipes({
         ingredients: ingredientsToSend,
         max_recipes: 3,
+        mode: mode === 'expiring' ? 'auto' : 'manual',
+        selected_ingredient_names: selectedNames,
+        time_preference: timePreference,
+        servings: servings,
       });
       setRecipes(response.recipes);
     } catch (error: any) {
@@ -255,6 +265,14 @@ export default function RecipesScreen() {
         <Text style={styles.recipeDescription} numberOfLines={2}>
           {item.description}
         </Text>
+        {item.recommendation_reason && (
+          <View style={styles.recommendationReasonBox}>
+            <Ionicons name="leaf" size={14} color={colors.primary.sage} />
+            <Text style={styles.recommendationReasonText} numberOfLines={1}>
+              {item.recommendation_reason}
+            </Text>
+          </View>
+        )}
         <View style={styles.recipeMetaRow}>
           <View style={styles.recipeMeta}>
             <Ionicons name="time-outline" size={16} color={colors.text.secondary} />
@@ -333,6 +351,79 @@ export default function RecipesScreen() {
             Pick Items
           </Text>
         </Pressable>
+      </View>
+
+      {/* Preferences Section (Collapsible) */}
+      <View style={styles.preferencesContainer}>
+        <Pressable
+          style={styles.preferencesHeader}
+          onPress={() => setShowPreferences(!showPreferences)}
+        >
+          <View style={styles.preferencesHeaderLeft}>
+            <Ionicons name="options-outline" size={18} color={colors.text.secondary} />
+            <Text style={styles.preferencesHeaderText}>Preferences</Text>
+            {(timePreference !== 'any' || servings !== 2) && (
+              <View style={styles.preferencesActiveBadge}>
+                <Text style={styles.preferencesActiveBadgeText}>Modified</Text>
+              </View>
+            )}
+          </View>
+          <Ionicons
+            name={showPreferences ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={colors.text.secondary}
+          />
+        </Pressable>
+
+        {showPreferences && (
+          <View style={styles.preferencesContent}>
+            {/* Time Preference */}
+            <View style={styles.preferenceRow}>
+              <Text style={styles.preferenceLabel}>Cooking Time</Text>
+              <View style={styles.preferenceChips}>
+                {(['quick', 'normal', 'any'] as TimePreference[]).map((option) => (
+                  <Pressable
+                    key={option}
+                    style={[
+                      styles.preferenceChip,
+                      timePreference === option && styles.preferenceChipActive,
+                    ]}
+                    onPress={() => setTimePreference(option)}
+                  >
+                    <Text
+                      style={[
+                        styles.preferenceChipText,
+                        timePreference === option && styles.preferenceChipTextActive,
+                      ]}
+                    >
+                      {option === 'quick' ? '< 30 min' : option === 'normal' ? '30-60 min' : 'Any'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            {/* Servings */}
+            <View style={styles.preferenceRow}>
+              <Text style={styles.preferenceLabel}>Servings</Text>
+              <View style={styles.servingsControl}>
+                <Pressable
+                  style={styles.servingsButton}
+                  onPress={() => setServings(Math.max(1, servings - 1))}
+                >
+                  <Ionicons name="remove" size={20} color={colors.primary.sage} />
+                </Pressable>
+                <Text style={styles.servingsValue}>{servings}</Text>
+                <Pressable
+                  style={styles.servingsButton}
+                  onPress={() => setServings(Math.min(6, servings + 1))}
+                >
+                  <Ionicons name="add" size={20} color={colors.primary.sage} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Mode-specific content */}
@@ -537,18 +628,26 @@ export default function RecipesScreen() {
                     <View key={index} style={styles.ingredientRow}>
                       <View style={[
                         styles.ingredientCheckbox,
-                        ing.from_inventory && styles.ingredientCheckboxActive
+                        ing.from_inventory && styles.ingredientCheckboxActive,
+                        ing.is_expiring_soon && styles.ingredientCheckboxExpiring
                       ]}>
                         <Ionicons
-                          name={ing.from_inventory ? 'checkmark' : 'add'}
+                          name={ing.is_expiring_soon ? 'warning' : ing.from_inventory ? 'checkmark' : 'add'}
                           size={14}
-                          color={ing.from_inventory ? colors.text.inverse : colors.text.muted}
+                          color={ing.is_expiring_soon ? colors.text.inverse : ing.from_inventory ? colors.text.inverse : colors.text.muted}
                         />
                       </View>
                       <Text style={styles.ingredientText}>
                         <Text style={styles.ingredientQuantity}>{ing.quantity}</Text> {ing.name}
                       </Text>
-                      {ing.from_inventory && (
+                      {ing.is_expiring_soon && ing.days_until_expiry !== null && ing.days_until_expiry !== undefined && (
+                        <View style={styles.expiringBadge}>
+                          <Text style={styles.expiringBadgeText}>
+                            {ing.days_until_expiry === 0 ? 'today' : ing.days_until_expiry === 1 ? '1 day' : `${ing.days_until_expiry} days`}
+                          </Text>
+                        </View>
+                      )}
+                      {ing.from_inventory && !ing.is_expiring_soon && (
                         <View style={styles.fromInventoryBadge}>
                           <Text style={styles.fromInventoryText}>in pantry</Text>
                         </View>
@@ -660,6 +759,107 @@ const styles = StyleSheet.create({
   },
   modeButtonTextActive: {
     color: colors.text.inverse,
+  },
+
+  // Preferences Section
+  preferencesContainer: {
+    marginHorizontal: spacing.base,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background.card,
+    borderRadius: radius.base,
+    ...shadows.sm,
+  },
+  preferencesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
+  },
+  preferencesHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  preferencesHeaderText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
+  },
+  preferencesActiveBadge: {
+    backgroundColor: colors.primary.sageMuted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  preferencesActiveBadgeText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.medium,
+  },
+  preferencesContent: {
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.base,
+    borderTopWidth: 1,
+    borderTopColor: colors.ui.border,
+    gap: spacing.md,
+    paddingTop: spacing.md,
+  },
+  preferenceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  preferenceLabel: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.primary,
+    fontWeight: typography.weight.medium,
+  },
+  preferenceChips: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  preferenceChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+  },
+  preferenceChipActive: {
+    backgroundColor: colors.primary.sage,
+  },
+  preferenceChipText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
+  },
+  preferenceChipTextActive: {
+    color: colors.text.inverse,
+  },
+  servingsControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  servingsButton: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  servingsValue: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    minWidth: 24,
+    textAlign: 'center',
   },
 
   // Smart Mode Section
@@ -916,8 +1116,25 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.sm,
     color: colors.text.secondary,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     lineHeight: typography.size.sm * typography.lineHeight.relaxed,
+  },
+  recommendationReasonBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary.sageMuted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+  },
+  recommendationReasonText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.primary.sageDark,
+    fontWeight: typography.weight.medium,
+    flex: 1,
   },
   recipeMetaRow: {
     flexDirection: 'row',
@@ -1074,6 +1291,9 @@ const styles = StyleSheet.create({
   ingredientCheckboxActive: {
     backgroundColor: colors.primary.sage,
   },
+  ingredientCheckboxExpiring: {
+    backgroundColor: colors.status.warning,
+  },
   ingredientText: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.base,
@@ -1095,6 +1315,18 @@ const styles = StyleSheet.create({
     fontSize: typography.size.xs,
     color: colors.primary.sage,
     fontWeight: typography.weight.medium,
+  },
+  expiringBadge: {
+    backgroundColor: colors.status.warningBg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs - 2,
+    borderRadius: radius.sm,
+  },
+  expiringBadgeText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.status.warning,
+    fontWeight: typography.weight.semibold,
   },
   instructionRow: {
     flexDirection: 'row',
