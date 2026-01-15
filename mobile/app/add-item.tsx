@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Dimensions,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { api } from '../services/api';
 import { DraftItem, InventoryItemCreate, BarcodeLookupResult, CATEGORIES, UNITS } from '../types';
+import { colors, typography, spacing, radius, shadows } from '../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -319,36 +321,36 @@ export default function AddItemScreen() {
       <Text style={styles.optionsSubtitle}>Choose how to add items</Text>
 
       <TouchableOpacity style={styles.optionButton} onPress={handleScanImage}>
-        <View style={[styles.optionIcon, { backgroundColor: '#e8f5e9' }]}>
-          <Ionicons name="camera" size={32} color="#2e7d32" />
+        <View style={[styles.optionIcon, { backgroundColor: colors.primary.sageMuted }]}>
+          <Ionicons name="camera" size={28} color={colors.primary.sage} />
         </View>
         <View style={styles.optionTextContainer}>
           <Text style={styles.optionTitle}>Scan from Image</Text>
           <Text style={styles.optionDescription}>Take a photo and detect items automatically</Text>
         </View>
-        <Ionicons name="chevron-forward" size={24} color="#ccc" />
+        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.optionButton} onPress={handleScanBarcode}>
-        <View style={[styles.optionIcon, { backgroundColor: '#e3f2fd' }]}>
-          <Ionicons name="barcode" size={32} color="#1976d2" />
+        <View style={[styles.optionIcon, { backgroundColor: colors.status.infoBg }]}>
+          <Ionicons name="barcode" size={28} color={colors.status.info} />
         </View>
         <View style={styles.optionTextContainer}>
           <Text style={styles.optionTitle}>Scan Barcode</Text>
           <Text style={styles.optionDescription}>Scan product barcode for quick entry</Text>
         </View>
-        <Ionicons name="chevron-forward" size={24} color="#ccc" />
+        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.optionButton} onPress={handleManualEntry}>
-        <View style={[styles.optionIcon, { backgroundColor: '#fff3e0' }]}>
-          <Ionicons name="create" size={32} color="#f57c00" />
+        <View style={[styles.optionIcon, { backgroundColor: colors.accent.terracottaMuted }]}>
+          <Ionicons name="create" size={28} color={colors.accent.terracotta} />
         </View>
         <View style={styles.optionTextContainer}>
           <Text style={styles.optionTitle}>Add Manually</Text>
           <Text style={styles.optionDescription}>Enter item details yourself</Text>
         </View>
-        <Ionicons name="chevron-forward" size={24} color="#ccc" />
+        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
       </TouchableOpacity>
     </View>
   );
@@ -356,7 +358,7 @@ export default function AddItemScreen() {
   // Render scanning/loading view
   const renderScanning = () => (
     <View style={styles.scanningContainer}>
-      <ActivityIndicator size="large" color="#2e7d32" />
+      <ActivityIndicator size="large" color={colors.primary.sage} />
       <Text style={styles.scanningText}>Detecting items...</Text>
     </View>
   );
@@ -408,7 +410,7 @@ export default function AddItemScreen() {
           </>
         ) : barcodeLoading ? (
           <>
-            <ActivityIndicator size="small" color="#2e7d32" />
+            <ActivityIndicator size="small" color={colors.primary.sage} />
             <Text style={styles.barcodePanelTitle}>Loading from Open Food Facts...</Text>
             <Text style={styles.barcodePanelSubtitle}>Barcode: {scannedBarcode}</Text>
           </>
@@ -472,7 +474,7 @@ export default function AddItemScreen() {
                 setShowEditModal(true);
               }}
             >
-              <Ionicons name="pencil" size={20} color="#666" />
+              <Ionicons name="pencil" size={20} color={colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -500,10 +502,10 @@ export default function AddItemScreen() {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={colors.text.inverse} />
               ) : (
                 <>
-                  <Ionicons name="checkmark" size={20} color="#fff" />
+                  <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
                   <Text style={styles.confirmButtonText}>Confirm</Text>
                 </>
               )}
@@ -514,7 +516,7 @@ export default function AddItemScreen() {
 
       {detectedItems.length === 0 && (
         <View style={styles.emptyDetected}>
-          <Ionicons name="checkmark-circle" size={64} color="#2e7d32" />
+          <Ionicons name="checkmark-circle" size={64} color={colors.primary.sage} />
           <Text style={styles.emptyDetectedText}>All items processed!</Text>
         </View>
       )}
@@ -533,7 +535,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="Enter product name"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.text.muted}
           value={manualForm.name}
           onChangeText={(text) => setManualForm({ ...manualForm, name: text })}
         />
@@ -548,7 +550,7 @@ export default function AddItemScreen() {
           <Text style={styles.categoryLabel}>Category</Text>
           <View style={styles.categoryValue}>
             <Text style={styles.categoryText}>{manualForm.category}</Text>
-            <Ionicons name="chevron-down" size={20} color="#666" />
+            <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
           </View>
         </TouchableOpacity>
 
@@ -591,7 +593,7 @@ export default function AddItemScreen() {
                 setManualForm({ ...manualForm, quantity: Math.max(1, manualForm.quantity - 1) })
               }
             >
-              <Ionicons name="remove" size={24} color="#d32f2f" />
+              <Ionicons name="remove" size={24} color={colors.status.error} />
             </TouchableOpacity>
             <Text style={styles.quantityValue}>{manualForm.quantity}</Text>
             <TouchableOpacity
@@ -600,7 +602,7 @@ export default function AddItemScreen() {
                 setManualForm({ ...manualForm, quantity: manualForm.quantity + 1 })
               }
             >
-              <Ionicons name="add" size={24} color="#2e7d32" />
+              <Ionicons name="add" size={24} color={colors.primary.sage} />
             </TouchableOpacity>
           </View>
         </View>
@@ -627,13 +629,16 @@ export default function AddItemScreen() {
             setManualForm({ ...manualForm, expiryDate: day.dateString })
           }
           markedDates={{
-            [manualForm.expiryDate]: { selected: true, selectedColor: '#2e7d32' },
+            [manualForm.expiryDate]: { selected: true, selectedColor: colors.primary.sage },
           }}
           minDate={new Date().toISOString().split('T')[0]}
           theme={{
-            todayTextColor: '#2e7d32',
-            arrowColor: '#2e7d32',
-            selectedDayBackgroundColor: '#2e7d32',
+            todayTextColor: colors.primary.sage,
+            arrowColor: colors.primary.sage,
+            selectedDayBackgroundColor: colors.primary.sage,
+            textDayFontFamily: typography.fontFamily.body,
+            textMonthFontFamily: typography.fontFamily.body,
+            textDayHeaderFontFamily: typography.fontFamily.body,
           }}
         />
       </View>
@@ -644,7 +649,7 @@ export default function AddItemScreen() {
         disabled={loading}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.text.inverse} />
         ) : (
           <Text style={styles.saveButtonText}>Add to Inventory</Text>
         )}
@@ -689,7 +694,7 @@ export default function AddItemScreen() {
                   )
                 }
               >
-                <Ionicons name="remove" size={24} color="#d32f2f" />
+                <Ionicons name="remove" size={24} color={colors.status.error} />
               </TouchableOpacity>
               <Text style={styles.quantityValue}>{editingItem?.quantity || 1}</Text>
               <TouchableOpacity
@@ -700,7 +705,7 @@ export default function AddItemScreen() {
                   )
                 }
               >
-                <Ionicons name="add" size={24} color="#2e7d32" />
+                <Ionicons name="add" size={24} color={colors.primary.sage} />
               </TouchableOpacity>
             </View>
 
@@ -737,13 +742,16 @@ export default function AddItemScreen() {
                 )
               }
               markedDates={{
-                [editingItem?.expiryDate || '']: { selected: true, selectedColor: '#2e7d32' },
+                [editingItem?.expiryDate || '']: { selected: true, selectedColor: colors.primary.sage },
               }}
               minDate={new Date().toISOString().split('T')[0]}
               theme={{
-                todayTextColor: '#2e7d32',
-                arrowColor: '#2e7d32',
-                selectedDayBackgroundColor: '#2e7d32',
+                todayTextColor: colors.primary.sage,
+                arrowColor: colors.primary.sage,
+                selectedDayBackgroundColor: colors.primary.sage,
+                textDayFontFamily: typography.fontFamily.body,
+                textMonthFontFamily: typography.fontFamily.body,
+                textDayHeaderFontFamily: typography.fontFamily.body,
               }}
             />
           </ScrollView>
@@ -767,7 +775,7 @@ export default function AddItemScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
-          <Ionicons name="close" size={28} color="#333" />
+          <Ionicons name="close" size={28} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {mode === 'options' && 'Add Food'}
@@ -793,77 +801,80 @@ export default function AddItemScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background.primary,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.base,
     paddingTop: 60,
-    paddingBottom: 16,
-    backgroundColor: '#fff',
+    paddingBottom: spacing.base,
+    backgroundColor: colors.background.card,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.ui.border,
   },
   headerButton: {
-    width: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
 
   // Options View
   optionsContainer: {
     flex: 1,
-    padding: 24,
+    padding: spacing.xl,
   },
   optionsTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['3xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   optionsSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 32,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
+    marginBottom: spacing['2xl'],
   },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: colors.background.card,
+    borderRadius: radius.lg,
+    padding: spacing.base,
+    marginBottom: spacing.md,
+    ...shadows.base,
   },
   optionIcon: {
     width: 56,
     height: 56,
-    borderRadius: 16,
+    borderRadius: radius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
   optionTextContainer: {
     flex: 1,
-    marginLeft: 16,
+    marginLeft: spacing.base,
   },
   optionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
   optionDescription: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
     marginTop: 2,
   },
 
@@ -874,294 +885,322 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   scanningText: {
-    fontSize: 18,
-    color: '#666',
-    marginTop: 16,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.secondary,
+    marginTop: spacing.base,
   },
 
   // Detected Items View
   detectedContainer: {
     flex: 1,
-    padding: 16,
+    padding: spacing.base,
   },
   detectedTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['2xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   detectedSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 24,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.xl,
   },
   detectedCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    backgroundColor: colors.background.card,
+    borderRadius: radius.lg,
+    padding: spacing.base,
+    marginBottom: spacing.md,
+    ...shadows.base,
   },
   detectedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   detectedName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
   detectedInfo: {
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   detectedInfoText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
   },
   detectedExpiry: {
-    fontSize: 14,
-    color: '#2e7d32',
-    marginTop: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.primary.sage,
+    marginTop: spacing.xs,
   },
   detectedExpiryMissing: {
-    fontSize: 14,
-    color: '#f57c00',
-    marginTop: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.status.warning,
+    marginTop: spacing.xs,
   },
   detectedActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
   },
   skipButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    borderWidth: 1.5,
+    borderColor: colors.ui.border,
     alignItems: 'center',
   },
   skipButtonText: {
-    fontSize: 16,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   confirmButton: {
     flex: 2,
     flexDirection: 'row',
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#2e7d32',
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.primary.sage,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   confirmButtonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.inverse,
+    fontWeight: typography.weight.semibold,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   emptyDetected: {
     alignItems: 'center',
-    paddingVertical: 48,
+    paddingVertical: spacing['3xl'],
   },
   emptyDetectedText: {
-    fontSize: 18,
-    color: '#2e7d32',
-    marginTop: 16,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.primary.sage,
+    marginTop: spacing.base,
   },
   doneButton: {
-    backgroundColor: '#2e7d32',
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.primary.sage,
+    paddingVertical: spacing.base,
+    borderRadius: radius.base,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
+    ...shadows.sm,
   },
   doneButtonText: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.inverse,
+    fontWeight: typography.weight.semibold,
   },
 
   // Manual Form
   manualContainer: {
     flex: 1,
-    padding: 16,
+    padding: spacing.base,
   },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-    marginTop: 16,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.tertiary,
+    letterSpacing: typography.letterSpacing.wider,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
   },
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.background.card,
+    borderRadius: radius.lg,
     overflow: 'hidden',
+    ...shadows.sm,
   },
   input: {
-    padding: 16,
-    fontSize: 16,
-    color: '#333',
+    padding: spacing.base,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: spacing.base,
   },
   categoryLabel: {
-    fontSize: 16,
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
   },
   categoryValue: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   categoryText: {
-    fontSize: 16,
-    color: '#2e7d32',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.medium,
   },
   categoryOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 12,
+    padding: spacing.md,
     paddingTop: 0,
-    gap: 8,
+    gap: spacing.sm,
   },
   categoryOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
   },
   categoryOptionSelected: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
   },
   categoryOptionText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   categoryOptionTextSelected: {
-    color: '#fff',
+    color: colors.text.inverse,
   },
   quantityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 8,
+    padding: spacing.base,
+    paddingBottom: spacing.sm,
   },
   quantityLabel: {
-    fontSize: 16,
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
   },
   quantityControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   quantityButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
+    width: 48,
+    height: 48,
+    borderRadius: radius.base,
+    backgroundColor: colors.background.secondary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   quantityValue: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
-    minWidth: 40,
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size.xl,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    minWidth: 48,
     textAlign: 'center',
   },
   unitChips: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.base,
   },
   unitChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
-    marginRight: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+    marginRight: spacing.sm,
   },
   unitChipSelected: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
   },
   unitChipText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   unitChipTextSelected: {
-    color: '#fff',
+    color: colors.text.inverse,
   },
   saveButton: {
-    backgroundColor: '#2e7d32',
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.primary.sage,
+    paddingVertical: spacing.base,
+    borderRadius: radius.base,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
+    ...shadows.sm,
   },
   saveButtonText: {
-    fontSize: 18,
-    color: '#fff',
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.inverse,
+    fontWeight: typography.weight.semibold,
   },
 
   // Edit Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.ui.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.background.card,
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: spacing.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.ui.border,
   },
   modalCancel: {
-    fontSize: 16,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
   modalSave: {
-    fontSize: 16,
-    color: '#2e7d32',
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.semibold,
   },
   modalBody: {
-    padding: 16,
+    padding: spacing.base,
   },
   modalInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    padding: spacing.md,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
   },
 
   // Barcode Scanner Styles
@@ -1191,7 +1230,7 @@ const styles = StyleSheet.create({
     height: SCREEN_WIDTH * 0.45,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 16,
+    borderRadius: radius.lg,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -1207,100 +1246,107 @@ const styles = StyleSheet.create({
     left: -2,
     borderTopWidth: 4,
     borderLeftWidth: 4,
-    borderTopLeftRadius: 16,
+    borderTopLeftRadius: radius.lg,
   },
   cornerTR: {
     top: -2,
     right: -2,
     borderTopWidth: 4,
     borderRightWidth: 4,
-    borderTopRightRadius: 16,
+    borderTopRightRadius: radius.lg,
   },
   cornerBL: {
     bottom: -2,
     left: -2,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
-    borderBottomLeftRadius: 16,
+    borderBottomLeftRadius: radius.lg,
   },
   cornerBR: {
     bottom: -2,
     right: -2,
     borderBottomWidth: 4,
     borderRightWidth: 4,
-    borderBottomRightRadius: 16,
+    borderBottomRightRadius: radius.lg,
   },
   overlayBottom: {
     flex: 1.5,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   barcodePanel: {
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    paddingBottom: 40,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.text.primary,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing['3xl'],
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
     alignItems: 'center',
   },
   barcodePanelTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   barcodePanelBrand: {
-    fontSize: 14,
-    color: '#aaa',
-    marginBottom: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.muted,
+    marginBottom: spacing.xs,
   },
   barcodePanelSubtitle: {
-    fontSize: 14,
-    color: '#888',
-    marginBottom: 8,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.muted,
+    marginBottom: spacing.sm,
   },
   barcodePanelWarning: {
-    fontSize: 13,
-    color: '#f57c00',
-    marginBottom: 8,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.status.warning,
+    marginBottom: spacing.sm,
   },
   barcodePanelButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
+    gap: spacing.md,
+    marginTop: spacing.base,
   },
   barcodeCancelButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#d32f2f',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.status.error,
   },
   barcodeCancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
   barcodeScanButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#2e7d32',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.primary.sage,
   },
   barcodeScanText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
   barcodeUseButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#1976d2',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.status.info,
   },
   barcodeUseText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
 });

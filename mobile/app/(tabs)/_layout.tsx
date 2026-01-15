@@ -1,36 +1,55 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet, Platform } from 'react-native';
+import { colors, radius, shadows, typography, spacing } from '../../theme';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#2e7d32',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: colors.primary.sage,
+        tabBarInactiveTintColor: colors.text.muted,
         tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopWidth: 1,
-          borderTopColor: '#eee',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          backgroundColor: colors.background.card,
+          borderTopWidth: 0,
+          height: Platform.OS === 'ios' ? 88 : 68,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+          paddingTop: 12,
+          paddingHorizontal: spacing.base,
+          ...shadows.sm,
+        },
+        tabBarLabelStyle: {
+          fontFamily: typography.fontFamily.body,
+          fontSize: typography.size.xs,
+          fontWeight: typography.weight.semibold,
+          marginTop: 4,
+        },
+        tabBarItemStyle: {
+          borderRadius: radius.md,
+          marginHorizontal: 4,
         },
         headerStyle: {
-          backgroundColor: '#2e7d32',
+          backgroundColor: colors.primary.sage,
+          ...shadows.base,
         },
-        headerTintColor: '#fff',
+        headerTintColor: colors.text.inverse,
         headerTitleStyle: {
-          fontWeight: '600',
+          fontFamily: typography.fontFamily.body,
+          fontWeight: typography.weight.semibold,
+          fontSize: typography.size.lg,
         },
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
         name="inventory"
         options={{
-          title: 'My Foods',
+          title: 'Pantry',
           headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="nutrition" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+              <Ionicons name={focused ? 'basket' : 'basket-outline'} size={22} color={color} />
+            </View>
           ),
         }}
       />
@@ -38,12 +57,27 @@ export default function TabLayout() {
         name="recipes"
         options={{
           title: 'Recipes',
-          headerTitle: 'Recipe Ideas',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="restaurant" size={size} color={color} />
+          headerShown: false,
+          tabBarIcon: ({ color, size, focused }) => (
+            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+              <Ionicons name={focused ? 'restaurant' : 'restaurant-outline'} size={22} color={color} />
+            </View>
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    width: 44,
+    height: 32,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainerActive: {
+    backgroundColor: colors.primary.sageMuted,
+  },
+});

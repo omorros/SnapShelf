@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Modal,
   SafeAreaView,
+  Animated,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,7 @@ import {
   IngredientInput,
   Recipe,
 } from '../../types';
+import { colors, typography, spacing, radius, shadows, getExpiryColor } from '../../theme';
 
 type SelectionMode = 'expiring' | 'manual';
 
@@ -34,6 +37,17 @@ export default function RecipesScreen() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
+
+  // Animation
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   // Fetch inventory on focus
   useFocusEffect(
@@ -68,7 +82,6 @@ export default function RecipesScreen() {
       const expiring = await api.getExpiringIngredients(3);
       setSelectedIngredients(expiring);
     } catch (error: any) {
-      // Silently fail, user can manually select
       console.log('Failed to get expiring items:', error.message);
     }
   };
@@ -95,13 +108,11 @@ export default function RecipesScreen() {
   };
 
   const handleGenerateRecipes = async () => {
-    // In manual mode, require user selection
     if (mode === 'manual' && selectedIngredients.length === 0) {
       Alert.alert('No Ingredients', 'Please select at least one ingredient');
       return;
     }
 
-    // In expiring mode, need at least some inventory
     if (mode === 'expiring' && inventoryItems.length === 0) {
       Alert.alert('No Inventory', 'Add some items to your inventory first');
       return;
@@ -113,8 +124,6 @@ export default function RecipesScreen() {
       let ingredientsToSend: IngredientInput[];
 
       if (mode === 'expiring') {
-        // Send ALL inventory items - LLM will prioritize expiring ones based on dates
-        // This allows complete recipes using non-expiring items as complement
         ingredientsToSend = inventoryItems.map((item) => ({
           name: item.name,
           quantity: item.quantity,
@@ -122,7 +131,6 @@ export default function RecipesScreen() {
           expiry_date: item.expiry_date,
         }));
       } else {
-        // Manual mode: only use exactly what user selected
         ingredientsToSend = selectedIngredients;
       }
 
@@ -146,13 +154,13 @@ export default function RecipesScreen() {
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case 'easy':
-        return '#4caf50';
+        return colors.status.success;
       case 'medium':
-        return '#ff9800';
+        return colors.status.warning;
       case 'hard':
-        return '#f44336';
+        return colors.status.error;
       default:
-        return '#666';
+        return colors.text.secondary;
     }
   };
 
@@ -170,11 +178,12 @@ export default function RecipesScreen() {
     const isExpiringSoon = daysUntilExpiry <= 3 && daysUntilExpiry >= 0;
 
     return (
-      <TouchableOpacity
-        style={[
+      <Pressable
+        style={({ pressed }) => [
           styles.ingredientChip,
           selected && styles.ingredientChipSelected,
           isExpiringSoon && !selected && styles.ingredientChipExpiring,
+          pressed && { opacity: 0.7 },
         ]}
         onPress={() => toggleIngredient(item)}
       >
@@ -190,7 +199,7 @@ export default function RecipesScreen() {
           <Ionicons
             name="warning"
             size={14}
-            color={selected ? '#fff' : '#f57c00'}
+            color={selected ? colors.text.inverse : colors.status.warning}
             style={{ marginLeft: 4 }}
           />
         )}
@@ -198,76 +207,116 @@ export default function RecipesScreen() {
           <Ionicons
             name="checkmark-circle"
             size={16}
-            color="#fff"
+            color={colors.text.inverse}
             style={{ marginLeft: 4 }}
           />
         )}
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
-  const renderRecipeCard = ({ item }: { item: Recipe }) => (
-    <TouchableOpacity style={styles.recipeCard} onPress={() => openRecipeDetails(item)}>
-      <View style={styles.recipeHeader}>
-        <Text style={styles.recipeTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <View
-          style={[
-            styles.difficultyBadge,
-            { backgroundColor: getDifficultyColor(item.difficulty) + '20' },
-          ]}
-        >
-          <Text style={[styles.difficultyText, { color: getDifficultyColor(item.difficulty) }]}>
-            {item.difficulty}
+  const renderRecipeCard = ({ item, index }: { item: Recipe; index: number }) => (
+    <Animated.View
+      style={[
+        styles.recipeCard,
+        {
+          opacity: headerOpacity,
+          transform: [{
+            translateY: headerOpacity.interpolate({
+              inputRange: [0, 1],
+              outputRange: [20, 0],
+            })
+          }]
+        }
+      ]}
+    >
+      <Pressable
+        style={({ pressed }) => [
+          styles.recipeCardInner,
+          pressed && { opacity: 0.8 },
+        ]}
+        onPress={() => openRecipeDetails(item)}
+      >
+        <View style={styles.recipeHeader}>
+          <Text style={styles.recipeTitle} numberOfLines={2}>
+            {item.title}
           </Text>
+          <View
+            style={[
+              styles.difficultyBadge,
+              { backgroundColor: getDifficultyColor(item.difficulty) + '20' },
+            ]}
+          >
+            <Text style={[styles.difficultyText, { color: getDifficultyColor(item.difficulty) }]}>
+              {item.difficulty}
+            </Text>
+          </View>
         </View>
-      </View>
-      <Text style={styles.recipeDescription} numberOfLines={2}>
-        {item.description}
-      </Text>
-      <View style={styles.recipeMetaRow}>
-        <View style={styles.recipeMeta}>
-          <Ionicons name="time-outline" size={16} color="#666" />
-          <Text style={styles.recipeMetaText}>{item.cooking_time_minutes} min</Text>
+        <Text style={styles.recipeDescription} numberOfLines={2}>
+          {item.description}
+        </Text>
+        <View style={styles.recipeMetaRow}>
+          <View style={styles.recipeMeta}>
+            <Ionicons name="time-outline" size={16} color={colors.text.secondary} />
+            <Text style={styles.recipeMetaText}>{item.cooking_time_minutes} min</Text>
+          </View>
+          <View style={styles.recipeMeta}>
+            <Ionicons name="people-outline" size={16} color={colors.text.secondary} />
+            <Text style={styles.recipeMetaText}>{item.servings} servings</Text>
+          </View>
+          <View style={styles.recipeMeta}>
+            <Ionicons name="restaurant-outline" size={16} color={colors.text.secondary} />
+            <Text style={styles.recipeMetaText}>{item.ingredients.length} items</Text>
+          </View>
         </View>
-        <View style={styles.recipeMeta}>
-          <Ionicons name="people-outline" size={16} color="#666" />
-          <Text style={styles.recipeMetaText}>{item.servings} servings</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+      </Pressable>
+    </Animated.View>
   );
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2e7d32" />
+        <ActivityIndicator size="large" color={colors.primary.sage} />
+        <Text style={styles.loadingText}>Loading your ingredients...</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        <Text style={styles.headerLabel}>AI-Powered</Text>
+        <Text style={styles.headerTitle}>Recipe Ideas</Text>
+      </Animated.View>
+
       {/* Mode Toggle */}
       <View style={styles.modeToggleContainer}>
-        <TouchableOpacity
-          style={[styles.modeButton, mode === 'expiring' && styles.modeButtonActive]}
+        <Pressable
+          style={({ pressed }) => [
+            styles.modeButton,
+            mode === 'expiring' && styles.modeButtonActive,
+            pressed && { opacity: 0.8 },
+          ]}
           onPress={() => setMode('expiring')}
         >
           <Ionicons
-            name="warning"
-            size={20}
-            color={mode === 'expiring' ? '#fff' : '#666'}
+            name="flash"
+            size={18}
+            color={mode === 'expiring' ? colors.text.inverse : colors.text.secondary}
           />
           <Text
             style={[styles.modeButtonText, mode === 'expiring' && styles.modeButtonTextActive]}
           >
-            Use Expiring
+            Smart Mode
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.modeButton, mode === 'manual' && styles.modeButtonActive]}
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.modeButton,
+            mode === 'manual' && styles.modeButtonActive,
+            pressed && { opacity: 0.8 },
+          ]}
           onPress={() => {
             setMode('manual');
             setSelectedIngredients([]);
@@ -275,36 +324,37 @@ export default function RecipesScreen() {
         >
           <Ionicons
             name="hand-left"
-            size={20}
-            color={mode === 'manual' ? '#fff' : '#666'}
+            size={18}
+            color={mode === 'manual' ? colors.text.inverse : colors.text.secondary}
           />
           <Text
             style={[styles.modeButtonText, mode === 'manual' && styles.modeButtonTextActive]}
           >
-            Pick Ingredients
+            Pick Items
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* Mode-specific content */}
       {mode === 'expiring' ? (
-        /* Expiring Mode - Prioritize expiring items, use all inventory */
-        <View style={styles.expiringModeSection}>
-          <View style={styles.expiringModeContent}>
-            <Ionicons name="flash" size={32} color="#2e7d32" />
-            <Text style={styles.expiringModeTitle}>Smart Recipe Mode</Text>
-            <Text style={styles.expiringModeText}>
+        <View style={styles.smartModeSection}>
+          <View style={styles.smartModeContent}>
+            <View style={styles.smartModeIcon}>
+              <Ionicons name="sparkles" size={28} color={colors.primary.sage} />
+            </View>
+            <Text style={styles.smartModeTitle}>Smart Recipe Mode</Text>
+            <Text style={styles.smartModeText}>
               {selectedIngredients.length > 0
                 ? `AI will prioritize your ${selectedIngredients.length} expiring item${selectedIngredients.length !== 1 ? 's' : ''} and use other ingredients to create complete recipes`
                 : `AI will suggest recipes using your ${inventoryItems.length} inventory item${inventoryItems.length !== 1 ? 's' : ''}`}
             </Text>
             {selectedIngredients.length > 0 && (
               <>
-                <Text style={styles.priorityLabel}>Priority items (expiring soon):</Text>
+                <Text style={styles.priorityLabel}>Priority items (expiring soon)</Text>
                 <View style={styles.expiringItemsList}>
                   {selectedIngredients.slice(0, 5).map((item, index) => (
                     <View key={index} style={styles.expiringItemChip}>
-                      <Ionicons name="warning" size={12} color="#f57c00" />
+                      <Ionicons name="warning" size={12} color={colors.status.warning} />
                       <Text style={styles.expiringItemText}>{item.name}</Text>
                     </View>
                   ))}
@@ -317,19 +367,24 @@ export default function RecipesScreen() {
               </>
             )}
             {selectedIngredients.length === 0 && inventoryItems.length > 0 && (
-              <Text style={styles.noExpiringText}>
-                No items expiring soon - recipes will use your full inventory
-              </Text>
+              <View style={styles.noExpiringBox}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.status.success} />
+                <Text style={styles.noExpiringText}>
+                  No items expiring soon - recipes will use your full inventory
+                </Text>
+              </View>
             )}
             {inventoryItems.length === 0 && (
-              <Text style={styles.noExpiringText}>
-                Add items to your inventory to get started
-              </Text>
+              <View style={styles.emptyBox}>
+                <Ionicons name="basket-outline" size={18} color={colors.text.muted} />
+                <Text style={styles.emptyBoxText}>
+                  Add items to your inventory to get started
+                </Text>
+              </View>
             )}
           </View>
         </View>
       ) : (
-        /* Manual Mode - Show ingredient chips for selection */
         <>
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedCount}>
@@ -347,7 +402,7 @@ export default function RecipesScreen() {
             <Text style={styles.sectionTitle}>Your Inventory</Text>
             {inventoryItems.length === 0 ? (
               <View style={styles.emptyIngredients}>
-                <Ionicons name="basket-outline" size={40} color="#ccc" />
+                <Ionicons name="basket-outline" size={40} color={colors.text.muted} />
                 <Text style={styles.emptyText}>No items in inventory</Text>
                 <Text style={styles.emptySubtext}>Add some food items first</Text>
               </View>
@@ -366,30 +421,33 @@ export default function RecipesScreen() {
       )}
 
       {/* Generate Button */}
-      <TouchableOpacity
-        style={[
-          styles.generateButton,
-          ((mode === 'manual' && selectedIngredients.length === 0) ||
+      <View style={styles.generateButtonContainer}>
+        <TouchableOpacity
+          style={[
+            styles.generateButton,
+            ((mode === 'manual' && selectedIngredients.length === 0) ||
+              (mode === 'expiring' && inventoryItems.length === 0) ||
+              generating) &&
+              styles.generateButtonDisabled,
+          ]}
+          onPress={handleGenerateRecipes}
+          disabled={
+            (mode === 'manual' && selectedIngredients.length === 0) ||
             (mode === 'expiring' && inventoryItems.length === 0) ||
-            generating) &&
-            styles.generateButtonDisabled,
-        ]}
-        onPress={handleGenerateRecipes}
-        disabled={
-          (mode === 'manual' && selectedIngredients.length === 0) ||
-          (mode === 'expiring' && inventoryItems.length === 0) ||
-          generating
-        }
-      >
-        {generating ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <>
-            <Ionicons name="restaurant" size={20} color="#fff" />
-            <Text style={styles.generateButtonText}>Generate Recipes</Text>
-          </>
-        )}
-      </TouchableOpacity>
+            generating
+          }
+          activeOpacity={0.85}
+        >
+          {generating ? (
+            <ActivityIndicator color={colors.text.inverse} />
+          ) : (
+            <>
+              <Ionicons name="sparkles" size={20} color={colors.text.inverse} />
+              <Text style={styles.generateButtonText}>Generate Recipes</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
 
       {/* Recipe Results */}
       {recipes.length > 0 ? (
@@ -400,18 +458,23 @@ export default function RecipesScreen() {
             renderItem={renderRecipeCard}
             keyExtractor={(item, index) => `${item.title}-${index}`}
             contentContainerStyle={styles.recipesList}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           />
         </View>
       ) : generating ? (
         <View style={styles.generatingSection}>
-          <ActivityIndicator size="large" color="#2e7d32" />
+          <ActivityIndicator size="large" color={colors.primary.sage} />
           <Text style={styles.generatingText}>Creating delicious recipes...</Text>
         </View>
       ) : (
         <View style={styles.emptyRecipes}>
-          <Ionicons name="restaurant-outline" size={60} color="#ccc" />
-          <Text style={styles.emptyText}>No recipes yet</Text>
-          <Text style={styles.emptySubtext}>Select ingredients and tap Generate</Text>
+          <View style={styles.emptyRecipesIcon}>
+            <Ionicons name="restaurant-outline" size={48} color={colors.primary.sageLight} />
+          </View>
+          <Text style={styles.emptyRecipesTitle}>No recipes yet</Text>
+          <Text style={styles.emptyRecipesSubtext}>
+            Select ingredients and tap Generate to get AI-powered recipe suggestions
+          </Text>
         </View>
       )}
 
@@ -428,65 +491,93 @@ export default function RecipesScreen() {
                 onPress={() => setShowRecipeModal(false)}
                 style={styles.closeButton}
               >
-                <Ionicons name="close" size={28} color="#333" />
+                <Ionicons name="close" size={28} color={colors.text.primary} />
               </TouchableOpacity>
-              <Text style={styles.modalTitle} numberOfLines={1}>
-                {selectedRecipe.title}
-              </Text>
+              <View style={styles.modalTitleContainer}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  {selectedRecipe.title}
+                </Text>
+              </View>
               <View style={{ width: 44 }} />
             </View>
-            <ScrollView style={styles.modalContent}>
+
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
               <Text style={styles.modalDescription}>{selectedRecipe.description}</Text>
 
               <View style={styles.modalMetaRow}>
                 <View style={styles.modalMeta}>
-                  <Ionicons name="time-outline" size={20} color="#2e7d32" />
-                  <Text style={styles.modalMetaText}>
-                    {selectedRecipe.cooking_time_minutes} min
+                  <View style={[styles.metaIconContainer, { backgroundColor: colors.primary.sageMuted }]}>
+                    <Ionicons name="time-outline" size={20} color={colors.primary.sage} />
+                  </View>
+                  <Text style={styles.modalMetaValue}>
+                    {selectedRecipe.cooking_time_minutes}
                   </Text>
+                  <Text style={styles.modalMetaLabel}>minutes</Text>
                 </View>
                 <View style={styles.modalMeta}>
-                  <Ionicons name="people-outline" size={20} color="#2e7d32" />
-                  <Text style={styles.modalMetaText}>{selectedRecipe.servings} servings</Text>
+                  <View style={[styles.metaIconContainer, { backgroundColor: colors.accent.terracottaMuted }]}>
+                    <Ionicons name="people-outline" size={20} color={colors.accent.terracotta} />
+                  </View>
+                  <Text style={styles.modalMetaValue}>{selectedRecipe.servings}</Text>
+                  <Text style={styles.modalMetaLabel}>servings</Text>
                 </View>
                 <View style={styles.modalMeta}>
-                  <Ionicons name="speedometer-outline" size={20} color="#2e7d32" />
-                  <Text style={styles.modalMetaText}>{selectedRecipe.difficulty}</Text>
+                  <View style={[styles.metaIconContainer, { backgroundColor: getDifficultyColor(selectedRecipe.difficulty) + '20' }]}>
+                    <Ionicons name="speedometer-outline" size={20} color={getDifficultyColor(selectedRecipe.difficulty)} />
+                  </View>
+                  <Text style={styles.modalMetaValue}>{selectedRecipe.difficulty}</Text>
+                  <Text style={styles.modalMetaLabel}>difficulty</Text>
                 </View>
               </View>
 
-              <Text style={styles.modalSectionTitle}>Ingredients</Text>
-              {selectedRecipe.ingredients.map((ing, index) => (
-                <View key={index} style={styles.ingredientRow}>
-                  <Ionicons
-                    name={ing.from_inventory ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={18}
-                    color={ing.from_inventory ? '#2e7d32' : '#999'}
-                  />
-                  <Text style={styles.ingredientText}>
-                    {ing.quantity} {ing.name}
-                  </Text>
-                  {ing.from_inventory && (
-                    <Text style={styles.fromInventoryBadge}>from inventory</Text>
-                  )}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Ingredients</Text>
+                <View style={styles.ingredientsList2}>
+                  {selectedRecipe.ingredients.map((ing, index) => (
+                    <View key={index} style={styles.ingredientRow}>
+                      <View style={[
+                        styles.ingredientCheckbox,
+                        ing.from_inventory && styles.ingredientCheckboxActive
+                      ]}>
+                        <Ionicons
+                          name={ing.from_inventory ? 'checkmark' : 'add'}
+                          size={14}
+                          color={ing.from_inventory ? colors.text.inverse : colors.text.muted}
+                        />
+                      </View>
+                      <Text style={styles.ingredientText}>
+                        <Text style={styles.ingredientQuantity}>{ing.quantity}</Text> {ing.name}
+                      </Text>
+                      {ing.from_inventory && (
+                        <View style={styles.fromInventoryBadge}>
+                          <Text style={styles.fromInventoryText}>in pantry</Text>
+                        </View>
+                      )}
+                    </View>
+                  ))}
                 </View>
-              ))}
+              </View>
 
-              <Text style={styles.modalSectionTitle}>Instructions</Text>
-              {selectedRecipe.instructions.map((step, index) => (
-                <View key={index} style={styles.instructionRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{index + 1}</Text>
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Instructions</Text>
+                {selectedRecipe.instructions.map((step, index) => (
+                  <View key={index} style={styles.instructionRow}>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>{index + 1}</Text>
+                    </View>
+                    <Text style={styles.instructionText}>{step}</Text>
                   </View>
-                  <Text style={styles.instructionText}>{step}</Text>
-                </View>
-              ))}
+                ))}
+              </View>
 
               {selectedRecipe.tips && (
-                <>
-                  <Text style={styles.modalSectionTitle}>Tips</Text>
-                  <Text style={styles.tipsText}>{selectedRecipe.tips}</Text>
-                </>
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Chef's Tips</Text>
+                  <View style={styles.tipsBox}>
+                    <Ionicons name="bulb" size={20} color={colors.status.warning} />
+                    <Text style={styles.tipsText}>{selectedRecipe.tips}</Text>
+                  </View>
+                </View>
               )}
 
               <View style={{ height: 40 }} />
@@ -501,252 +592,346 @@ export default function RecipesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background.primary,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
   },
+  loadingText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+
+  // Header
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 60,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.background.primary,
+  },
+  headerLabel: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+    color: colors.primary.sage,
+    letterSpacing: typography.letterSpacing.wider,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  headerTitle: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['3xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    letterSpacing: typography.letterSpacing.tight,
+  },
+
+  // Mode Toggle
   modeToggleContainer: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.base,
+    gap: spacing.sm,
+    backgroundColor: colors.background.primary,
   },
   modeButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-    gap: 8,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.background.secondary,
+    gap: spacing.sm,
   },
   modeButtonActive: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
   },
   modeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.secondary,
   },
   modeButtonTextActive: {
-    color: '#fff',
+    color: colors.text.inverse,
   },
-  selectedSummary: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  // Smart Mode Section
+  smartModeSection: {
+    backgroundColor: colors.background.card,
+    marginHorizontal: spacing.base,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    ...shadows.base,
+  },
+  smartModeContent: {
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
   },
-  selectedCount: {
-    fontSize: 14,
-    color: '#666',
-  },
-  clearButton: {
-    fontSize: 14,
-    color: '#2e7d32',
-    fontWeight: '600',
-  },
-  ingredientsSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  ingredientsList: {
-    paddingHorizontal: 16,
-  },
-  ingredientChip: {
-    flexDirection: 'row',
+  smartModeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primary.sageMuted,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    marginRight: 8,
+    marginBottom: spacing.md,
   },
-  ingredientChipSelected: {
-    backgroundColor: '#2e7d32',
+  smartModeTitle: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
-  ingredientChipExpiring: {
-    borderWidth: 2,
-    borderColor: '#f57c00',
-  },
-  ingredientChipText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  ingredientChipTextSelected: {
-    color: '#fff',
-  },
-  emptyIngredients: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#999',
-    marginTop: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#bbb',
-    marginTop: 4,
-  },
-  // Expiring mode styles
-  expiringModeSection: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  expiringModeContent: {
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  expiringModeTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  expiringModeText: {
-    fontSize: 14,
-    color: '#666',
+  smartModeText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
     textAlign: 'center',
-    marginBottom: 16,
+    lineHeight: typography.size.sm * typography.lineHeight.relaxed,
+    marginBottom: spacing.md,
   },
   priorityLabel: {
-    fontSize: 13,
-    color: '#f57c00',
-    fontWeight: '600',
-    marginBottom: 8,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+    color: colors.status.warning,
+    letterSpacing: typography.letterSpacing.wide,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
   },
   expiringItemsList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   expiringItemChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: colors.status.warningBg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
     gap: 4,
   },
   expiringItemText: {
-    fontSize: 13,
-    color: '#e65100',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.status.warning,
+    fontWeight: typography.weight.medium,
   },
   moreItemsText: {
-    fontSize: 13,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.tertiary,
     fontStyle: 'italic',
   },
+  noExpiringBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.status.successBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.base,
+    gap: spacing.sm,
+  },
   noExpiringText: {
-    fontSize: 14,
-    color: '#999',
-    fontStyle: 'italic',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.status.success,
+    fontWeight: typography.weight.medium,
+    flex: 1,
+  },
+  emptyBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.secondary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.base,
+    gap: spacing.sm,
+  },
+  emptyBoxText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+
+  // Manual Selection
+  selectedSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background.primary,
+  },
+  selectedCount: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+  },
+  clearButton: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.semibold,
+  },
+  ingredientsSection: {
+    backgroundColor: colors.background.card,
+    paddingVertical: spacing.md,
+    marginHorizontal: spacing.base,
+    borderRadius: radius.lg,
+    ...shadows.sm,
+  },
+  sectionTitle: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    paddingHorizontal: spacing.base,
+    marginBottom: spacing.sm,
+  },
+  ingredientsList: {
+    paddingHorizontal: spacing.base,
+  },
+  ingredientChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+    marginRight: spacing.sm,
+  },
+  ingredientChipSelected: {
+    backgroundColor: colors.primary.sage,
+  },
+  ingredientChipExpiring: {
+    borderWidth: 1.5,
+    borderColor: colors.status.warning,
+  },
+  ingredientChipText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.primary,
+    fontWeight: typography.weight.medium,
+  },
+  ingredientChipTextSelected: {
+    color: colors.text.inverse,
+  },
+  emptyIngredients: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+  emptyText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+  },
+  emptySubtext: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.muted,
+    marginTop: spacing.xs,
+  },
+
+  // Generate Button
+  generateButtonContainer: {
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
   },
   generateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2e7d32',
-    marginHorizontal: 16,
-    marginVertical: 16,
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
+    backgroundColor: colors.primary.sage,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    gap: spacing.sm,
+    ...shadows.sm,
   },
   generateButtonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: colors.text.muted,
   },
   generateButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
+
+  // Recipe Results
   recipesSection: {
     flex: 1,
-    backgroundColor: '#fff',
-    paddingTop: 16,
+    paddingTop: spacing.sm,
   },
   recipesList: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.lg,
   },
   recipeCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    backgroundColor: colors.background.card,
+    borderRadius: radius.lg,
+    ...shadows.base,
+  },
+  recipeCardInner: {
+    padding: spacing.base,
   },
   recipeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   recipeTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
     flex: 1,
-    marginRight: 8,
+    marginRight: spacing.sm,
   },
   difficultyBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
   },
   difficultyText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+    textTransform: 'capitalize',
   },
   recipeDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginBottom: spacing.md,
+    lineHeight: typography.size.sm * typography.lineHeight.relaxed,
   },
   recipeMetaRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: spacing.lg,
   },
   recipeMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   recipeMetaText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
   },
   generatingSection: {
     flex: 1,
@@ -754,125 +939,202 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   generatingText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 16,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
   },
   emptyRecipes: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
   },
-  // Modal styles
+  emptyRecipesIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.primary.sageMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyRecipesTitle: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.xs,
+  },
+  emptyRecipesSubtext: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    maxWidth: 260,
+    lineHeight: typography.size.sm * typography.lineHeight.relaxed,
+  },
+
+  // Modal
   modalContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background.card,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.ui.border,
   },
   closeButton: {
-    padding: 8,
-    marginLeft: -8,
+    padding: spacing.xs,
+  },
+  modalTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
     textAlign: 'center',
-    marginHorizontal: 8,
   },
   modalContent: {
     flex: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
   modalDescription: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 16,
-    lineHeight: 24,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
+    marginBottom: spacing.lg,
+    lineHeight: typography.size.md * typography.lineHeight.relaxed,
   },
   modalMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingVertical: 16,
+    paddingVertical: spacing.lg,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#eee',
-    marginBottom: 24,
+    borderColor: colors.ui.border,
+    marginBottom: spacing.xl,
   },
   modalMeta: {
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
-  modalMetaText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+  metaIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  modalMetaValue: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+  },
+  modalMetaLabel: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.text.tertiary,
+  },
+  modalSection: {
+    marginBottom: spacing.xl,
   },
   modalSectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-    marginTop: 8,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    marginBottom: spacing.md,
+  },
+  ingredientsList2: {
+    gap: spacing.sm,
   },
   ingredientRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
+    gap: spacing.md,
+  },
+  ingredientCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ingredientCheckboxActive: {
+    backgroundColor: colors.primary.sage,
   },
   ingredientText: {
-    fontSize: 15,
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.primary,
     flex: 1,
   },
+  ingredientQuantity: {
+    fontWeight: typography.weight.semibold,
+    color: colors.text.secondary,
+  },
   fromInventoryBadge: {
-    fontSize: 12,
-    color: '#2e7d32',
-    backgroundColor: '#e8f5e9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: colors.primary.sageMuted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs - 2,
+    borderRadius: radius.sm,
+  },
+  fromInventoryText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.medium,
   },
   instructionRow: {
     flexDirection: 'row',
-    paddingVertical: 12,
-    gap: 12,
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
   stepNumber: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepNumberText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
   instructionText: {
+    fontFamily: typography.fontFamily.body,
     flex: 1,
-    fontSize: 15,
-    color: '#333',
-    lineHeight: 22,
+    fontSize: typography.size.base,
+    color: colors.text.primary,
+    lineHeight: typography.size.base * typography.lineHeight.relaxed,
+  },
+  tipsBox: {
+    flexDirection: 'row',
+    backgroundColor: colors.status.warningBg,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    gap: spacing.md,
   },
   tipsText: {
-    fontSize: 15,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.primary,
     fontStyle: 'italic',
-    backgroundColor: '#fff8e1',
-    padding: 12,
-    borderRadius: 8,
-    lineHeight: 22,
+    flex: 1,
+    lineHeight: typography.size.base * typography.lineHeight.relaxed,
   },
 });

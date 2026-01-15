@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,21 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Animated,
+  Pressable,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Calendar } from 'react-native-calendars';
 import { api } from '../../services/api';
 import { InventoryItem, CATEGORIES, UNITS } from '../../types';
 import { useAuth } from '../../services/auth';
+import theme, { colors, typography, spacing, radius, shadows, getExpiryColor, getCategoryColor, getCategoryIcon } from '../../theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -25,6 +32,10 @@ export default function InventoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { logout } = useAuth();
   const router = useRouter();
+
+  // Animation values
+  const headerOpacity = useRef(new Animated.Value(0)).current;
+  const fabScale = useRef(new Animated.Value(0)).current;
 
   // Item action modal state
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -46,10 +57,32 @@ export default function InventoryScreen() {
   const [showConsumeModal, setShowConsumeModal] = useState(false);
   const [consumeQuantity, setConsumeQuantity] = useState(1);
 
+  // Initial animations
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(headerOpacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(fabScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 100,
+        useNativeDriver: true,
+        delay: 300,
+      }),
+    ]).start();
+  }, []);
+
   const fetchInventory = async () => {
     try {
       const data = await api.getInventoryItems();
-      setItems(data);
+      // Sort by expiry date
+      const sorted = data.sort((a, b) =>
+        new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+      );
+      setItems(sorted);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to fetch inventory');
     } finally {
@@ -69,13 +102,11 @@ export default function InventoryScreen() {
     fetchInventory();
   };
 
-  // Open action modal when item is tapped
   const handleItemPress = (item: InventoryItem) => {
     setSelectedItem(item);
     setShowActionModal(true);
   };
 
-  // Open edit modal
   const handleEdit = () => {
     if (!selectedItem) return;
     setEditForm({
@@ -89,7 +120,6 @@ export default function InventoryScreen() {
     setShowEditModal(true);
   };
 
-  // Save edited item
   const handleSaveEdit = async () => {
     if (!selectedItem) return;
     setActionLoading(true);
@@ -111,7 +141,6 @@ export default function InventoryScreen() {
     }
   };
 
-  // Open consume modal
   const handleConsume = () => {
     if (!selectedItem) return;
     setConsumeQuantity(1);
@@ -119,7 +148,6 @@ export default function InventoryScreen() {
     setShowConsumeModal(true);
   };
 
-  // Perform the consumption
   const confirmConsume = async () => {
     if (!selectedItem) return;
     setActionLoading(true);
@@ -127,11 +155,9 @@ export default function InventoryScreen() {
       const remaining = selectedItem.quantity - consumeQuantity;
 
       if (remaining <= 0) {
-        // Consumed all - delete the item
         await api.deleteInventoryItem(selectedItem.id);
         setItems(items.filter((i) => i.id !== selectedItem.id));
       } else {
-        // Partial consumption - update quantity
         const updated = await api.updateInventoryItem(selectedItem.id, {
           quantity: remaining,
         });
@@ -147,7 +173,6 @@ export default function InventoryScreen() {
     }
   };
 
-  // Delete item (threw away / mistake)
   const handleDelete = async () => {
     if (!selectedItem) return;
     Alert.alert(
@@ -177,9 +202,9 @@ export default function InventoryScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Logout', onPress: () => logout() },
+      { text: 'Sign Out', onPress: () => logout() },
     ]);
   };
 
@@ -193,134 +218,177 @@ export default function InventoryScreen() {
     const expiry = new Date(expiryDate);
     expiry.setHours(0, 0, 0, 0);
     const diffTime = expiry.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const getExpiryColor = (days: number) => {
-    if (days < 0) return '#d32f2f';
-    if (days <= 2) return '#f57c00';
-    if (days <= 5) return '#fbc02d';
-    return '#2e7d32';
+  // Count items by status
+  const getStatusCounts = () => {
+    let expired = 0;
+    let expiringSoon = 0;
+    let fresh = 0;
+
+    items.forEach(item => {
+      const days = getDaysUntilExpiry(item.expiry_date);
+      if (days < 0) expired++;
+      else if (days <= 3) expiringSoon++;
+      else fresh++;
+    });
+
+    return { expired, expiringSoon, fresh, total: items.length };
   };
 
-  const getCategoryIcon = (category: string): keyof typeof Ionicons.glyphMap => {
-    const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-      fruits: 'nutrition',
-      vegetables: 'leaf',
-      dairy: 'water',
-      meat: 'restaurant',
-      fish: 'fish',
-      grains: 'grid',
-      snacks: 'fast-food',
-      beverages: 'cafe',
-      frozen: 'snow',
-      condiments: 'flask',
-      other: 'cube',
-    };
-    return iconMap[category?.toLowerCase()] || 'cube';
-  };
-
-  const getCategoryColor = (category: string): string => {
-    const colorMap: Record<string, string> = {
-      fruits: '#FF6B6B',
-      vegetables: '#4ECDC4',
-      dairy: '#45B7D1',
-      meat: '#E17055',
-      fish: '#74B9FF',
-      grains: '#FDCB6E',
-      snacks: '#A29BFE',
-      beverages: '#55A3FF',
-      frozen: '#81ECEC',
-      condiments: '#FD79A8',
-      other: '#B2BEC3',
-    };
-    return colorMap[category?.toLowerCase()] || '#B2BEC3';
-  };
-
-  const renderInventoryItem = ({ item }: { item: InventoryItem }) => {
+  const renderInventoryItem = ({ item, index }: { item: InventoryItem; index: number }) => {
     const daysUntilExpiry = getDaysUntilExpiry(item.expiry_date);
-    const expiryColor = getExpiryColor(daysUntilExpiry);
-    const categoryIcon = getCategoryIcon(item.category);
+    const expiryInfo = getExpiryColor(daysUntilExpiry);
     const categoryColor = getCategoryColor(item.category);
-
-    const expiryText =
-      daysUntilExpiry < 0
-        ? 'Expired'
-        : daysUntilExpiry === 0
-        ? 'Expires today'
-        : `${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''} remaining`;
+    const categoryIconName = getCategoryIcon(item.category);
 
     return (
-      <TouchableOpacity
-        style={styles.itemCard}
-        onPress={() => handleItemPress(item)}
-        activeOpacity={0.7}
+      <Animated.View
+        style={[
+          styles.itemCard,
+          {
+            opacity: headerOpacity,
+            transform: [{
+              translateY: headerOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0],
+              })
+            }]
+          }
+        ]}
       >
-        <View style={[styles.itemIcon, { backgroundColor: categoryColor + '20' }]}>
-          <Ionicons name={categoryIcon} size={24} color={categoryColor} />
-        </View>
-        <View style={styles.itemInfo}>
-          <Text style={styles.itemName}>{item.name}</Text>
-          <View style={styles.expiryRow}>
-            <View style={[styles.expiryDot, { backgroundColor: expiryColor }]} />
-            <Text style={[styles.expiryText, { color: expiryColor }]}>{expiryText}</Text>
+        <Pressable
+          onPress={() => handleItemPress(item)}
+          style={({ pressed }) => [
+            styles.itemCardInner,
+            pressed && styles.itemCardPressed,
+          ]}
+        >
+          {/* Category Icon */}
+          <View style={[styles.categoryIcon, { backgroundColor: categoryColor + '15' }]}>
+            <Ionicons name={categoryIconName as any} size={22} color={categoryColor} />
           </View>
-        </View>
-        <Text style={styles.itemQuantity}>
-          {item.quantity} {item.unit}
-        </Text>
-        <Ionicons name="chevron-forward" size={20} color="#ccc" />
-      </TouchableOpacity>
+
+          {/* Item Info */}
+          <View style={styles.itemInfo}>
+            <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.itemMeta}>
+              <View style={[styles.expiryBadge, { backgroundColor: expiryInfo.background }]}>
+                <View style={[styles.expiryDot, { backgroundColor: expiryInfo.text }]} />
+                <Text style={[styles.expiryText, { color: expiryInfo.text }]}>
+                  {expiryInfo.label}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Quantity */}
+          <View style={styles.quantityBadge}>
+            <Text style={styles.quantityText}>{item.quantity}</Text>
+            <Text style={styles.unitText}>{item.unit}</Text>
+          </View>
+
+          {/* Chevron */}
+          <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
+        </Pressable>
+      </Animated.View>
     );
   };
 
+  const statusCounts = getStatusCounts();
+
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#e8f5e9', '#c8e6c9', '#a5d6a7']} style={styles.gradient}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Foods</Text>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Ionicons name="log-out-outline" size={24} color="#2e7d32" />
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.headerGreeting}>Your Pantry</Text>
+            <Text style={styles.headerTitle}>My Foods</Text>
+          </View>
+          <TouchableOpacity onPress={handleLogout} style={styles.profileButton}>
+            <Ionicons name="person-circle-outline" size={32} color={colors.primary.sage} />
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        {loading ? (
-          <View style={styles.centered}>
-            <Text style={styles.loadingText}>Loading...</Text>
+        {/* Status Pills */}
+        {items.length > 0 && (
+          <View style={styles.statusRow}>
+            {statusCounts.expired > 0 && (
+              <View style={[styles.statusPill, { backgroundColor: colors.status.expiredBg }]}>
+                <View style={[styles.statusDot, { backgroundColor: colors.status.expired }]} />
+                <Text style={[styles.statusText, { color: colors.status.expired }]}>
+                  {statusCounts.expired} expired
+                </Text>
+              </View>
+            )}
+            {statusCounts.expiringSoon > 0 && (
+              <View style={[styles.statusPill, { backgroundColor: colors.status.warningBg }]}>
+                <View style={[styles.statusDot, { backgroundColor: colors.status.warning }]} />
+                <Text style={[styles.statusText, { color: colors.status.warning }]}>
+                  {statusCounts.expiringSoon} expiring soon
+                </Text>
+              </View>
+            )}
+            <View style={[styles.statusPill, { backgroundColor: colors.primary.sageMuted }]}>
+              <Text style={[styles.statusText, { color: colors.primary.sage }]}>
+                {statusCounts.total} items
+              </Text>
+            </View>
           </View>
-        ) : items.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="basket-outline" size={80} color="#2e7d32" />
-            <Text style={styles.emptyText}>No items yet</Text>
-            <Text style={styles.emptySubtext}>
-              Tap the + button to add food to your inventory
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={items}
-            renderItem={renderInventoryItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.list}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                tintColor="#2e7d32"
-              />
-            }
-            showsVerticalScrollIndicator={false}
-          />
         )}
+      </Animated.View>
 
-        {/* FAB */}
-        <TouchableOpacity style={styles.fab} onPress={handleAddItem} activeOpacity={0.8}>
-          <Ionicons name="add" size={32} color="#fff" />
+      {/* Content */}
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary.sage} />
+          <Text style={styles.loadingText}>Loading your inventory...</Text>
+        </View>
+      ) : items.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconContainer}>
+            <Ionicons name="basket-outline" size={64} color={colors.primary.sageLight} />
+          </View>
+          <Text style={styles.emptyTitle}>Your pantry is empty</Text>
+          <Text style={styles.emptySubtext}>
+            Start by adding food items to track their freshness and reduce waste
+          </Text>
+          <TouchableOpacity style={styles.emptyButton} onPress={handleAddItem}>
+            <Ionicons name="add" size={20} color={colors.text.inverse} />
+            <Text style={styles.emptyButtonText}>Add Your First Item</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          renderItem={renderInventoryItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary.sage}
+              colors={[colors.primary.sage]}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        />
+      )}
+
+      {/* FAB */}
+      <Animated.View style={[styles.fab, { transform: [{ scale: fabScale }] }]}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={handleAddItem}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add" size={28} color={colors.text.inverse} />
         </TouchableOpacity>
-      </LinearGradient>
+      </Animated.View>
 
       {/* Action Modal */}
       <Modal
@@ -329,35 +397,67 @@ export default function InventoryScreen() {
         transparent
         onRequestClose={() => setShowActionModal(false)}
       >
-        <TouchableOpacity
+        <Pressable
           style={styles.modalOverlay}
-          activeOpacity={1}
           onPress={() => setShowActionModal(false)}
         >
-          <View style={styles.actionSheet}>
+          <Pressable style={styles.actionSheet} onPress={(e) => e.stopPropagation()}>
             {selectedItem && (
               <>
+                <View style={styles.modalHandle} />
                 <View style={styles.actionSheetHeader}>
-                  <Text style={styles.actionSheetTitle}>{selectedItem.name}</Text>
-                  <Text style={styles.actionSheetSubtitle}>
-                    {selectedItem.quantity} {selectedItem.unit}
-                  </Text>
+                  <View style={[
+                    styles.actionItemIcon,
+                    { backgroundColor: getCategoryColor(selectedItem.category) + '15' }
+                  ]}>
+                    <Ionicons
+                      name={getCategoryIcon(selectedItem.category) as any}
+                      size={24}
+                      color={getCategoryColor(selectedItem.category)}
+                    />
+                  </View>
+                  <View style={styles.actionItemInfo}>
+                    <Text style={styles.actionSheetTitle}>{selectedItem.name}</Text>
+                    <Text style={styles.actionSheetSubtitle}>
+                      {selectedItem.quantity} {selectedItem.unit} • {selectedItem.category}
+                    </Text>
+                  </View>
                 </View>
 
-                <TouchableOpacity style={styles.actionButton} onPress={handleEdit}>
-                  <Ionicons name="pencil" size={24} color="#1976d2" />
-                  <Text style={styles.actionButtonText}>Edit Item</Text>
-                </TouchableOpacity>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={styles.actionButton} onPress={handleEdit}>
+                    <View style={[styles.actionButtonIcon, { backgroundColor: colors.status.infoBg }]}>
+                      <Ionicons name="pencil" size={20} color={colors.status.info} />
+                    </View>
+                    <View style={styles.actionButtonContent}>
+                      <Text style={styles.actionButtonText}>Edit Item</Text>
+                      <Text style={styles.actionButtonHint}>Update details or expiry date</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionButton} onPress={handleConsume}>
-                  <Ionicons name="checkmark-circle" size={24} color="#2e7d32" />
-                  <Text style={styles.actionButtonText}>Mark as Consumed</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionButton} onPress={handleConsume}>
+                    <View style={[styles.actionButtonIcon, { backgroundColor: colors.status.successBg }]}>
+                      <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
+                    </View>
+                    <View style={styles.actionButtonContent}>
+                      <Text style={styles.actionButtonText}>Mark as Consumed</Text>
+                      <Text style={styles.actionButtonHint}>Track what you've used</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.actionButton, styles.actionButtonDanger]} onPress={handleDelete}>
-                  <Ionicons name="trash" size={24} color="#d32f2f" />
-                  <Text style={[styles.actionButtonText, styles.actionButtonTextDanger]}>Delete</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionButton} onPress={handleDelete}>
+                    <View style={[styles.actionButtonIcon, { backgroundColor: colors.status.errorBg }]}>
+                      <Ionicons name="trash" size={20} color={colors.status.error} />
+                    </View>
+                    <View style={styles.actionButtonContent}>
+                      <Text style={[styles.actionButtonText, { color: colors.status.error }]}>Delete</Text>
+                      <Text style={styles.actionButtonHint}>Remove from inventory</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity
                   style={styles.cancelButton}
@@ -367,8 +467,8 @@ export default function InventoryScreen() {
                 </TouchableOpacity>
               </>
             )}
-          </View>
-        </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Edit Modal */}
@@ -392,13 +492,14 @@ export default function InventoryScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.editModalBody}>
+            <ScrollView style={styles.editModalBody} showsVerticalScrollIndicator={false}>
               <Text style={styles.editLabel}>NAME</Text>
               <TextInput
                 style={styles.editInput}
                 value={editForm.name}
                 onChangeText={(text) => setEditForm({ ...editForm, name: text })}
                 placeholder="Product name"
+                placeholderTextColor={colors.text.muted}
               />
 
               <Text style={styles.editLabel}>CATEGORY</Text>
@@ -406,8 +507,14 @@ export default function InventoryScreen() {
                 style={styles.editCategoryButton}
                 onPress={() => setShowCategoryPicker(!showCategoryPicker)}
               >
-                <Text style={styles.editCategoryText}>{editForm.category || 'Select category'}</Text>
-                <Ionicons name="chevron-down" size={20} color="#666" />
+                <Text style={styles.editCategoryText}>
+                  {editForm.category || 'Select category'}
+                </Text>
+                <Ionicons
+                  name={showCategoryPicker ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={colors.text.secondary}
+                />
               </TouchableOpacity>
               {showCategoryPicker && (
                 <View style={styles.categoryOptions}>
@@ -416,7 +523,8 @@ export default function InventoryScreen() {
                       key={cat}
                       style={[
                         styles.categoryOption,
-                        editForm.category.toLowerCase() === cat.toLowerCase() && styles.categoryOptionSelected,
+                        editForm.category.toLowerCase() === cat.toLowerCase() &&
+                          styles.categoryOptionSelected,
                       ]}
                       onPress={() => {
                         setEditForm({ ...editForm, category: cat });
@@ -426,7 +534,8 @@ export default function InventoryScreen() {
                       <Text
                         style={[
                           styles.categoryOptionText,
-                          editForm.category.toLowerCase() === cat.toLowerCase() && styles.categoryOptionTextSelected,
+                          editForm.category.toLowerCase() === cat.toLowerCase() &&
+                            styles.categoryOptionTextSelected,
                         ]}
                       >
                         {cat}
@@ -439,17 +548,19 @@ export default function InventoryScreen() {
               <Text style={styles.editLabel}>QUANTITY</Text>
               <View style={styles.quantityRow}>
                 <TouchableOpacity
-                  style={styles.quantityButton}
+                  style={styles.quantityButtonMinus}
                   onPress={() => setEditForm({ ...editForm, quantity: Math.max(1, editForm.quantity - 1) })}
                 >
-                  <Ionicons name="remove" size={24} color="#d32f2f" />
+                  <Ionicons name="remove" size={24} color={colors.status.error} />
                 </TouchableOpacity>
-                <Text style={styles.quantityValue}>{editForm.quantity}</Text>
+                <View style={styles.quantityDisplay}>
+                  <Text style={styles.quantityValue}>{editForm.quantity}</Text>
+                </View>
                 <TouchableOpacity
-                  style={styles.quantityButton}
+                  style={styles.quantityButtonPlus}
                   onPress={() => setEditForm({ ...editForm, quantity: editForm.quantity + 1 })}
                 >
-                  <Ionicons name="add" size={24} color="#2e7d32" />
+                  <Ionicons name="add" size={24} color={colors.primary.sage} />
                 </TouchableOpacity>
               </View>
 
@@ -482,14 +593,24 @@ export default function InventoryScreen() {
                   setEditForm({ ...editForm, expiryDate: day.dateString })
                 }
                 markedDates={{
-                  [editForm.expiryDate]: { selected: true, selectedColor: '#2e7d32' },
+                  [editForm.expiryDate]: { selected: true, selectedColor: colors.primary.sage },
                 }}
                 theme={{
-                  todayTextColor: '#2e7d32',
-                  arrowColor: '#2e7d32',
-                  selectedDayBackgroundColor: '#2e7d32',
+                  backgroundColor: colors.background.card,
+                  calendarBackground: colors.background.card,
+                  todayTextColor: colors.primary.sage,
+                  arrowColor: colors.primary.sage,
+                  selectedDayBackgroundColor: colors.primary.sage,
+                  selectedDayTextColor: colors.text.inverse,
+                  dayTextColor: colors.text.primary,
+                  textDisabledColor: colors.text.muted,
+                  monthTextColor: colors.text.primary,
+                  textMonthFontWeight: '600',
                 }}
+                style={styles.calendar}
               />
+
+              <View style={{ height: 40 }} />
             </ScrollView>
           </View>
         </View>
@@ -498,30 +619,33 @@ export default function InventoryScreen() {
       {/* Consume Modal */}
       <Modal
         visible={showConsumeModal}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setShowConsumeModal(false)}
       >
         <View style={styles.consumeModalOverlay}>
           <View style={styles.consumeModalContent}>
             <View style={styles.consumeModalHeader}>
+              <View style={[styles.consumeIcon, { backgroundColor: colors.status.successBg }]}>
+                <Ionicons name="checkmark-circle" size={32} color={colors.status.success} />
+              </View>
               <Text style={styles.consumeModalTitle}>Mark as Consumed</Text>
               {selectedItem && (
                 <Text style={styles.consumeModalSubtitle}>
-                  {selectedItem.name} ({selectedItem.quantity} {selectedItem.unit} available)
+                  {selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available
                 </Text>
               )}
             </View>
 
             <View style={styles.consumeModalBody}>
-              <Text style={styles.consumeLabel}>How many did you consume?</Text>
+              <Text style={styles.consumeLabel}>How many did you use?</Text>
 
               <View style={styles.consumeQuantityRow}>
                 <TouchableOpacity
                   style={styles.consumeQuantityButton}
                   onPress={() => setConsumeQuantity(Math.max(1, consumeQuantity - 1))}
                 >
-                  <Ionicons name="remove" size={28} color="#d32f2f" />
+                  <Ionicons name="remove" size={24} color={colors.status.error} />
                 </TouchableOpacity>
 
                 <View style={styles.consumeQuantityDisplay}>
@@ -535,20 +659,26 @@ export default function InventoryScreen() {
                     setConsumeQuantity(Math.min(selectedItem?.quantity || 1, consumeQuantity + 1))
                   }
                 >
-                  <Ionicons name="add" size={28} color="#2e7d32" />
+                  <Ionicons name="add" size={24} color={colors.primary.sage} />
                 </TouchableOpacity>
               </View>
 
               {selectedItem && consumeQuantity >= selectedItem.quantity && (
-                <Text style={styles.consumeWarning}>
-                  This will remove the item from your inventory
-                </Text>
+                <View style={styles.consumeWarningBox}>
+                  <Ionicons name="information-circle" size={18} color={colors.status.warning} />
+                  <Text style={styles.consumeWarning}>
+                    This will remove the item from your inventory
+                  </Text>
+                </View>
               )}
 
               {selectedItem && consumeQuantity < selectedItem.quantity && (
-                <Text style={styles.consumeInfo}>
-                  {selectedItem.quantity - consumeQuantity} {selectedItem.unit} will remain
-                </Text>
+                <View style={styles.consumeInfoBox}>
+                  <Ionicons name="information-circle" size={18} color={colors.primary.sage} />
+                  <Text style={styles.consumeInfo}>
+                    {selectedItem.quantity - consumeQuantity} {selectedItem.unit} will remain
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -568,10 +698,14 @@ export default function InventoryScreen() {
                 onPress={confirmConsume}
                 disabled={actionLoading}
               >
-                <Ionicons name="checkmark" size={20} color="#fff" />
-                <Text style={styles.consumeConfirmText}>
-                  {actionLoading ? 'Saving...' : 'Confirm'}
-                </Text>
+                {actionLoading ? (
+                  <ActivityIndicator color={colors.text.inverse} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
+                    <Text style={styles.consumeConfirmText}>Confirm</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -584,423 +718,627 @@ export default function InventoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background.primary,
   },
-  gradient: {
-    flex: 1,
-  },
+
+  // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg,
     paddingTop: 60,
-    paddingBottom: 16,
+    paddingBottom: spacing.base,
+    backgroundColor: colors.background.primary,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerGreeting: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.medium,
+    color: colors.text.secondary,
+    letterSpacing: typography.letterSpacing.wide,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1b5e20',
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['4xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    letterSpacing: typography.letterSpacing.tight,
   },
-  logoutButton: {
-    padding: 8,
+  profileButton: {
+    padding: spacing.xs,
   },
+
+  // Status Pills
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.full,
+    gap: spacing.xs,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.medium,
+  },
+
+  // Loading & Empty states
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: spacing.xl,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#2e7d32',
-  },
-  list: {
-    padding: 16,
-    paddingBottom: 100,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing['2xl'],
   },
-  emptyText: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#2e7d32',
-    marginTop: 16,
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.primary.sageMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  emptyTitle: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['2xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
   },
   emptySubtext: {
-    fontSize: 16,
-    color: '#4a4a4a',
-    marginTop: 8,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.secondary,
     textAlign: 'center',
+    lineHeight: typography.size.base * typography.lineHeight.relaxed,
+    marginBottom: spacing.xl,
+    maxWidth: 280,
   },
-  itemCard: {
+  emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: colors.primary.sage,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    gap: spacing.sm,
+    ...shadows.base,
   },
-  itemIcon: {
+  emptyButtonText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
+  },
+
+  // List
+  list: {
+    padding: spacing.base,
+    paddingBottom: 120,
+  },
+
+  // Item Card
+  itemCard: {
+    backgroundColor: colors.background.card,
+    borderRadius: radius.lg,
+    ...shadows.base,
+  },
+  itemCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  itemCardPressed: {
+    opacity: 0.7,
+  },
+  categoryIcon: {
     width: 48,
     height: 48,
-    borderRadius: 12,
+    borderRadius: radius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
   itemInfo: {
     flex: 1,
-    marginLeft: 12,
   },
   itemName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    marginBottom: 4,
   },
-  expiryRow: {
+  itemMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+  },
+  expiryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs - 1,
+    borderRadius: radius.full,
+    gap: spacing.xs,
   },
   expiryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   expiryText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
   },
-  itemQuantity: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 8,
+  quantityBadge: {
+    alignItems: 'flex-end',
+    marginRight: spacing.xs,
   },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#2e7d32',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+  quantityText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+  },
+  unitText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.text.tertiary,
+    textTransform: 'lowercase',
   },
 
-  // Action Modal Styles
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: 28,
+    right: 20,
+  },
+  fabButton: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.xl,
+    backgroundColor: colors.primary.sage,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.lg,
+  },
+
+  // Action Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.ui.overlay,
     justifyContent: 'flex-end',
   },
   actionSheet: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.background.card,
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
     paddingBottom: 40,
   },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.ui.border,
+    alignSelf: 'center',
+    marginTop: spacing.md,
+    marginBottom: spacing.base,
+  },
   actionSheetHeader: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.base,
+    paddingTop: 0,
+    gap: spacing.md,
+  },
+  actionItemIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
+    justifyContent: 'center',
     alignItems: 'center',
   },
+  actionItemInfo: {
+    flex: 1,
+  },
   actionSheetTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
   actionSheetSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  actionButtons: {
+    paddingHorizontal: spacing.base,
+    gap: spacing.xs,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    paddingHorizontal: 24,
-    gap: 16,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.background.secondary,
+    gap: spacing.md,
+  },
+  actionButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionButtonContent: {
+    flex: 1,
   },
   actionButtonText: {
-    fontSize: 17,
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
-  actionButtonDanger: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  actionButtonTextDanger: {
-    color: '#d32f2f',
+  actionButtonHint: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.tertiary,
+    marginTop: 1,
   },
   cancelButton: {
-    padding: 16,
+    marginHorizontal: spacing.base,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.background.secondary,
     alignItems: 'center',
-    marginTop: 8,
-    marginHorizontal: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
   },
   cancelButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.secondary,
   },
 
-  // Edit Modal Styles
+  // Edit Modal
   editModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.ui.overlay,
     justifyContent: 'flex-end',
   },
   editModalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
+    backgroundColor: colors.background.card,
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
+    maxHeight: '92%',
   },
   editModalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: spacing.base,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.ui.border,
   },
   editModalCancel: {
-    fontSize: 16,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.secondary,
   },
   editModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
   },
   editModalSave: {
-    fontSize: 16,
-    color: '#2e7d32',
-    fontWeight: '600',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.semibold,
   },
   editModalSaveDisabled: {
     opacity: 0.5,
   },
   editModalBody: {
-    padding: 16,
+    padding: spacing.base,
   },
   editLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-    marginTop: 16,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.tertiary,
+    letterSpacing: typography.letterSpacing.wider,
+    marginBottom: spacing.sm,
+    marginTop: spacing.lg,
   },
   editInput: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#333',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    padding: spacing.md,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
   },
   editCategoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    padding: spacing.md,
   },
   editCategoryText: {
-    fontSize: 16,
-    color: '#333',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    color: colors.text.primary,
   },
   categoryOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
-    gap: 8,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
   },
   categoryOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
   },
   categoryOptionSelected: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
   },
   categoryOptionText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   categoryOptionTextSelected: {
-    color: '#fff',
+    color: colors.text.inverse,
   },
   quantityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
+    gap: spacing.lg,
   },
-  quantityButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#f5f5f5',
+  quantityButtonMinus: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.base,
+    backgroundColor: colors.status.errorBg,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityButtonPlus: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.base,
+    backgroundColor: colors.primary.sageMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityDisplay: {
+    minWidth: 80,
     alignItems: 'center',
   },
   quantityValue: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#333',
-    minWidth: 50,
-    textAlign: 'center',
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['3xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
   },
   unitChips: {
-    marginTop: 8,
+    marginTop: spacing.xs,
   },
   unitChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#f5f5f5',
-    marginRight: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+    marginRight: spacing.sm,
   },
   unitChipSelected: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: colors.primary.sage,
   },
   unitChipText: {
-    fontSize: 14,
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   unitChipTextSelected: {
-    color: '#fff',
+    color: colors.text.inverse,
+  },
+  calendar: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
   },
 
-  // Consume Modal Styles
+  // Consume Modal
   consumeModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.ui.overlay,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   consumeModalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
+    backgroundColor: colors.background.card,
+    borderRadius: radius['2xl'],
     width: '100%',
-    maxWidth: 340,
+    maxWidth: 360,
+    ...shadows.xl,
   },
   consumeModalHeader: {
-    padding: 24,
-    paddingBottom: 16,
+    padding: spacing.xl,
+    paddingBottom: spacing.lg,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.ui.border,
+  },
+  consumeIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
   },
   consumeModalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333',
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size.xl,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
   },
   consumeModalSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
   },
   consumeModalBody: {
-    padding: 24,
+    padding: spacing.xl,
     alignItems: 'center',
   },
   consumeLabel: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 20,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.primary,
+    marginBottom: spacing.lg,
   },
   consumeQuantityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    gap: spacing.xl,
   },
   consumeQuantityButton: {
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: '#f5f5f5',
+    borderRadius: radius.lg,
+    backgroundColor: colors.background.secondary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   consumeQuantityDisplay: {
     alignItems: 'center',
+    minWidth: 80,
   },
   consumeQuantityValue: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: '#333',
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['5xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
   },
   consumeQuantityUnit: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  consumeWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.status.warningBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.base,
+    marginTop: spacing.lg,
+    gap: spacing.sm,
   },
   consumeWarning: {
-    fontSize: 13,
-    color: '#f57c00',
-    marginTop: 16,
-    textAlign: 'center',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.status.warning,
+    fontWeight: typography.weight.medium,
+    flex: 1,
+  },
+  consumeInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary.sageMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.base,
+    marginTop: spacing.lg,
+    gap: spacing.sm,
   },
   consumeInfo: {
-    fontSize: 13,
-    color: '#2e7d32',
-    marginTop: 16,
-    textAlign: 'center',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.primary.sage,
+    fontWeight: typography.weight.medium,
+    flex: 1,
   },
   consumeModalButtons: {
     flexDirection: 'row',
-    gap: 12,
-    padding: 24,
+    gap: spacing.md,
+    padding: spacing.lg,
     paddingTop: 0,
   },
   consumeCancelButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.background.secondary,
     alignItems: 'center',
   },
   consumeCancelText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.secondary,
   },
   consumeConfirmButton: {
     flex: 1,
     flexDirection: 'row',
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: '#2e7d32',
+    paddingVertical: spacing.md,
+    borderRadius: radius.base,
+    backgroundColor: colors.primary.sage,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   consumeConfirmText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
   buttonDisabled: {
     opacity: 0.6,

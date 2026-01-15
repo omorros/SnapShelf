@@ -125,10 +125,10 @@ class RecipeGenerationService:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",  # Faster model, excellent for text generation
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                max_tokens=4000,
+                max_tokens=2500,  # Reduced - 3 recipes don't need 4000 tokens
                 temperature=0.7  # Some creativity for recipe suggestions
             )
         except Exception as e:
