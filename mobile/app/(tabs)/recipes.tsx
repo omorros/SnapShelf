@@ -426,8 +426,8 @@ export default function RecipesScreen() {
         )}
       </View>
 
-      {/* Mode-specific content */}
-      {mode === 'expiring' ? (
+      {/* Mode-specific content - hide when recipes are shown */}
+      {mode === 'expiring' && recipes.length === 0 && !generating ? (
         <View style={styles.smartModeSection}>
           <View style={styles.smartModeContent}>
             <View style={styles.smartModeIcon}>
@@ -475,7 +475,7 @@ export default function RecipesScreen() {
             )}
           </View>
         </View>
-      ) : (
+      ) : recipes.length === 0 && !generating ? (
         <>
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedCount}>
@@ -509,7 +509,7 @@ export default function RecipesScreen() {
             )}
           </View>
         </>
-      )}
+      ) : null}
 
       {/* Generate Button */}
       <View style={styles.generateButtonContainer}>

@@ -26,8 +26,42 @@ import theme, { colors, typography, spacing, radius, shadows, getExpiryColor, ge
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Extended type for merged items
+interface MergedInventoryItem extends InventoryItem {
+  mergedIds: string[];  // All IDs of items merged into this one
+  mergedCount: number;  // How many items were merged
+}
+
+// Merge items with same name and expiry date
+const mergeInventoryItems = (items: InventoryItem[]): MergedInventoryItem[] => {
+  const mergeMap = new Map<string, MergedInventoryItem>();
+
+  items.forEach((item) => {
+    // Create a key based on name (lowercase) and expiry date
+    const key = `${item.name.toLowerCase().trim()}_${item.expiry_date}`;
+
+    if (mergeMap.has(key)) {
+      // Merge with existing item
+      const existing = mergeMap.get(key)!;
+      existing.quantity += item.quantity;
+      existing.mergedIds.push(item.id);
+      existing.mergedCount += 1;
+    } else {
+      // Create new merged item
+      mergeMap.set(key, {
+        ...item,
+        mergedIds: [item.id],
+        mergedCount: 1,
+      });
+    }
+  });
+
+  return Array.from(mergeMap.values());
+};
+
 export default function InventoryScreen() {
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [displayItems, setDisplayItems] = useState<MergedInventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { logout } = useAuth();
@@ -75,10 +109,23 @@ export default function InventoryScreen() {
     ]).start();
   }, []);
 
+  // Keep displayItems in sync with items changes (for edit/consume/delete operations)
+  useEffect(() => {
+    if (items.length > 0) {
+      const merged = mergeInventoryItems(items);
+      merged.sort((a, b) =>
+        new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+      );
+      setDisplayItems(merged);
+    } else {
+      setDisplayItems([]);
+    }
+  }, [items]);
+
   const fetchInventory = async () => {
     try {
       const data = await api.getInventoryItems();
-      // Sort by expiry date
+      // Sort by expiry date - displayItems will be updated by useEffect
       const sorted = data.sort((a, b) =>
         new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
       );
@@ -102,8 +149,16 @@ export default function InventoryScreen() {
     fetchInventory();
   };
 
-  const handleItemPress = (item: InventoryItem) => {
-    setSelectedItem(item);
+  const handleItemPress = (item: MergedInventoryItem) => {
+    // For merged items, select the first underlying item for operations
+    // but store the merged info for display
+    const originalItem = items.find((i) => i.id === item.mergedIds[0]);
+    if (originalItem) {
+      setSelectedItem({
+        ...originalItem,
+        quantity: item.quantity, // Use merged quantity for display
+      });
+    }
     setShowActionModal(true);
   };
 
@@ -237,7 +292,7 @@ export default function InventoryScreen() {
     return { expired, expiringSoon, fresh, total: items.length };
   };
 
-  const renderInventoryItem = ({ item, index }: { item: InventoryItem; index: number }) => {
+  const renderInventoryItem = ({ item, index }: { item: MergedInventoryItem; index: number }) => {
     const daysUntilExpiry = getDaysUntilExpiry(item.expiry_date);
     const expiryInfo = getExpiryColor(daysUntilExpiry);
     const categoryColor = getCategoryColor(item.category);
@@ -362,9 +417,9 @@ export default function InventoryScreen() {
         </View>
       ) : (
         <FlatList
-          data={items}
+          data={displayItems}
           renderItem={renderInventoryItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.mergedIds.join('-')}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
