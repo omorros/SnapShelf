@@ -35,7 +35,7 @@ TARGET SERVINGS: {servings}
 USER'S INVENTORY:
 {ingredients_json}
 
-Generate {max_recipes} recipe suggestions.
+Generate EXACTLY {max_recipes} recipes. You MUST return exactly {max_recipes} recipes, no more, no less.
 
 RANKING PRIORITY:
 1. Waste reduction impact (recipes using most expiring items rank higher)

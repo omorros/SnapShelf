@@ -316,7 +316,10 @@ export default function RecipesScreen() {
             mode === 'expiring' && styles.modeButtonActive,
             pressed && { opacity: 0.8 },
           ]}
-          onPress={() => setMode('expiring')}
+          onPress={() => {
+            setMode('expiring');
+            setRecipes([]);
+          }}
         >
           <Ionicons
             name="flash"
@@ -338,6 +341,7 @@ export default function RecipesScreen() {
           onPress={() => {
             setMode('manual');
             setSelectedIngredients([]);
+            setRecipes([]);
           }}
         >
           <Ionicons
