@@ -11,6 +11,7 @@ import {
   Modal,
   Dimensions,
   Pressable,
+  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -615,27 +616,21 @@ export default function AddItemScreen() {
 
       <Text style={styles.sectionLabel}>QUANTITY</Text>
       <View style={styles.card}>
-        <View style={styles.quantityRow}>
-          <Text style={styles.quantityLabel}>Quantity</Text>
-          <View style={styles.quantityControls}>
-            <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={() =>
-                setManualForm({ ...manualForm, quantity: Math.max(1, manualForm.quantity - 1) })
-              }
-            >
-              <Ionicons name="remove" size={24} color={colors.status.error} />
-            </TouchableOpacity>
-            <Text style={styles.quantityValue}>{manualForm.quantity}</Text>
-            <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={() =>
-                setManualForm({ ...manualForm, quantity: manualForm.quantity + 1 })
-              }
-            >
-              <Ionicons name="add" size={24} color={colors.primary.sage} />
-            </TouchableOpacity>
-          </View>
+        <View style={styles.quantitySimpleRow}>
+          <TextInput
+            style={styles.quantityInputSimple}
+            value={String(manualForm.quantity)}
+            onChangeText={(text) => {
+              const num = parseFloat(text) || 0;
+              setManualForm({ ...manualForm, quantity: num });
+            }}
+            keyboardType="numeric"
+            selectTextOnFocus
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
+            placeholder="Enter quantity"
+            placeholderTextColor={colors.text.muted}
+          />
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChips}>
@@ -716,29 +711,20 @@ export default function AddItemScreen() {
             />
 
             <Text style={styles.sectionLabel}>QUANTITY</Text>
-            <View style={styles.quantityRow}>
-              <TouchableOpacity
-                style={styles.quantityButton}
-                onPress={() =>
-                  setEditingItem((prev) =>
-                    prev ? { ...prev, quantity: Math.max(1, prev.quantity - 1) } : null
-                  )
-                }
-              >
-                <Ionicons name="remove" size={24} color={colors.status.error} />
-              </TouchableOpacity>
-              <Text style={styles.quantityValue}>{editingItem?.quantity || 1}</Text>
-              <TouchableOpacity
-                style={styles.quantityButton}
-                onPress={() =>
-                  setEditingItem((prev) =>
-                    prev ? { ...prev, quantity: prev.quantity + 1 } : null
-                  )
-                }
-              >
-                <Ionicons name="add" size={24} color={colors.primary.sage} />
-              </TouchableOpacity>
-            </View>
+            <TextInput
+              style={styles.quantityInputSimple}
+              value={String(editingItem?.quantity || 1)}
+              onChangeText={(text) => {
+                const num = parseFloat(text) || 0;
+                setEditingItem((prev) => (prev ? { ...prev, quantity: num } : null));
+              }}
+              keyboardType="numeric"
+              selectTextOnFocus
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
+              placeholder="Enter quantity"
+              placeholderTextColor={colors.text.muted}
+            />
 
             <Text style={styles.sectionLabel}>UNIT</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1170,6 +1156,32 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.bold,
     color: colors.text.primary,
     minWidth: 48,
+    textAlign: 'center',
+  },
+  quantityInput: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size.xl,
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    minWidth: 80,
+    textAlign: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  quantitySimpleRow: {
+    padding: spacing.base,
+    paddingBottom: spacing.sm,
+  },
+  quantityInputSimple: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.primary,
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
     textAlign: 'center',
   },
   unitChips: {

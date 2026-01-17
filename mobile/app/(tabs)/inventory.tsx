@@ -14,6 +14,10 @@ import {
   Pressable,
   ActivityIndicator,
   Dimensions,
+  Keyboard,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -694,21 +698,25 @@ export default function InventoryScreen() {
         transparent
         onRequestClose={() => setShowEditModal(false)}
       >
-        <View style={styles.editModalOverlay}>
-          <View style={styles.editModalContent}>
-            <View style={styles.editModalHeader}>
-              <TouchableOpacity onPress={() => setShowEditModal(false)}>
-                <Text style={styles.editModalCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.editModalTitle}>Edit Item</Text>
-              <TouchableOpacity onPress={handleSaveEdit} disabled={actionLoading}>
-                <Text style={[styles.editModalSave, actionLoading && styles.editModalSaveDisabled]}>
-                  {actionLoading ? 'Saving...' : 'Save'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.editModalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.editModalContent}>
+              <View style={styles.editModalHeader}>
+                <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                  <Text style={styles.editModalCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <Text style={styles.editModalTitle}>Edit Item</Text>
+                <TouchableOpacity onPress={handleSaveEdit} disabled={actionLoading}>
+                  <Text style={[styles.editModalSave, actionLoading && styles.editModalSaveDisabled]}>
+                    {actionLoading ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-            <ScrollView style={styles.editModalBody} showsVerticalScrollIndicator={false}>
+              <ScrollView style={styles.editModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={styles.editLabel}>NAME</Text>
               <TextInput
                 style={styles.editInput}
@@ -762,23 +770,20 @@ export default function InventoryScreen() {
               )}
 
               <Text style={styles.editLabel}>QUANTITY</Text>
-              <View style={styles.quantityRow}>
-                <TouchableOpacity
-                  style={styles.quantityButtonMinus}
-                  onPress={() => setEditForm({ ...editForm, quantity: Math.max(1, editForm.quantity - 1) })}
-                >
-                  <Ionicons name="remove" size={24} color={colors.status.error} />
-                </TouchableOpacity>
-                <View style={styles.quantityDisplay}>
-                  <Text style={styles.quantityValue}>{editForm.quantity}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.quantityButtonPlus}
-                  onPress={() => setEditForm({ ...editForm, quantity: editForm.quantity + 1 })}
-                >
-                  <Ionicons name="add" size={24} color={colors.primary.sage} />
-                </TouchableOpacity>
-              </View>
+              <TextInput
+                style={styles.quantityInputSimple}
+                value={String(editForm.quantity)}
+                onChangeText={(text) => {
+                  const num = parseFloat(text) || 0;
+                  setEditForm({ ...editForm, quantity: num });
+                }}
+                keyboardType="numeric"
+                selectTextOnFocus
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+                placeholder="Enter quantity"
+                placeholderTextColor={colors.text.muted}
+              />
 
               <Text style={styles.editLabel}>UNIT</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChips}>
@@ -826,10 +831,11 @@ export default function InventoryScreen() {
                 style={styles.calendar}
               />
 
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </View>
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Consume Modal */}
@@ -839,8 +845,9 @@ export default function InventoryScreen() {
         transparent
         onRequestClose={() => setShowConsumeModal(false)}
       >
-        <View style={styles.consumeModalOverlay}>
-          <View style={styles.consumeModalContent}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.consumeModalOverlay}>
+            <View style={styles.consumeModalContent}>
             <View style={styles.consumeModalHeader}>
               <View style={[styles.consumeIcon, { backgroundColor: colors.status.successBg }]}>
                 <Ionicons name="checkmark-circle" size={32} color={colors.status.success} />
@@ -856,27 +863,21 @@ export default function InventoryScreen() {
             <View style={styles.consumeModalBody}>
               <Text style={styles.consumeLabel}>How many did you use?</Text>
 
-              <View style={styles.consumeQuantityRow}>
-                <TouchableOpacity
-                  style={styles.consumeQuantityButton}
-                  onPress={() => setConsumeQuantity(Math.max(1, consumeQuantity - 1))}
-                >
-                  <Ionicons name="remove" size={24} color={colors.status.error} />
-                </TouchableOpacity>
-
-                <View style={styles.consumeQuantityDisplay}>
-                  <Text style={styles.consumeQuantityValue}>{consumeQuantity}</Text>
-                  <Text style={styles.consumeQuantityUnit}>{selectedItem?.unit}</Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.consumeQuantityButton}
-                  onPress={() =>
-                    setConsumeQuantity(Math.min(selectedItem?.quantity || 1, consumeQuantity + 1))
-                  }
-                >
-                  <Ionicons name="add" size={24} color={colors.primary.sage} />
-                </TouchableOpacity>
+              <View style={styles.consumeInputRow}>
+                <TextInput
+                  style={styles.consumeQuantityInputSimple}
+                  value={String(consumeQuantity)}
+                  onChangeText={(text) => {
+                    const num = parseFloat(text) || 0;
+                    const maxQty = selectedItem?.quantity || 1;
+                    setConsumeQuantity(Math.min(num, maxQty));
+                  }}
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+                <Text style={styles.consumeUnitLabel}>{selectedItem?.unit}</Text>
               </View>
 
               {selectedItem && consumeQuantity >= selectedItem.quantity && (
@@ -923,9 +924,10 @@ export default function InventoryScreen() {
                   </>
                 )}
               </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -1376,6 +1378,28 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.bold,
     color: colors.text.primary,
   },
+  quantityInput: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['3xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    minWidth: 100,
+    textAlign: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  quantityInputSimple: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.primary,
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    textAlign: 'center',
+  },
   unitChips: {
     marginTop: spacing.xs,
   },
@@ -1478,11 +1502,47 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.bold,
     color: colors.text.primary,
   },
+  consumeQuantityInput: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['5xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    minWidth: 120,
+    textAlign: 'center',
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
   consumeQuantityUnit: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.sm,
     color: colors.text.secondary,
     marginTop: spacing.xs,
+  },
+  consumeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  consumeQuantityInputSimple: {
+    fontFamily: typography.fontFamily.display,
+    fontSize: typography.size['4xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  consumeUnitLabel: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
   consumeWarningBox: {
     flexDirection: 'row',
