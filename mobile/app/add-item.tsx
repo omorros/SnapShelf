@@ -91,14 +91,20 @@ export default function AddItemScreen() {
       {
         text: 'Take Photo',
         onPress: async () => {
-          const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+          const result = await ImagePicker.launchCameraAsync({
+            quality: 0.5,
+            exif: false,
+          });
           if (!result.canceled) processImage(result.assets[0].uri);
         },
       },
       {
         text: 'Choose from Gallery',
         onPress: async () => {
-          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.8 });
+          const result = await ImagePicker.launchImageLibraryAsync({
+            quality: 0.5,
+            exif: false,
+          });
           if (!result.canceled) processImage(result.assets[0].uri);
         },
       },
@@ -482,12 +488,37 @@ export default function AddItemScreen() {
             <Text style={styles.detectedInfoText}>
               {item.quantity} {item.unit} • {item.category}
             </Text>
-            {item.expiryDate ? (
-              <Text style={styles.detectedExpiry}>Expires: {item.expiryDate}</Text>
-            ) : (
-              <Text style={styles.detectedExpiryMissing}>No expiry date set</Text>
-            )}
           </View>
+
+          {/* Prominent expiry date picker */}
+          <TouchableOpacity
+            style={[
+              styles.expiryPickerButton,
+              item.expiryDate ? styles.expiryPickerSet : styles.expiryPickerMissing,
+            ]}
+            onPress={() => {
+              setEditingItem(item);
+              setShowEditModal(true);
+            }}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={18}
+              color={item.expiryDate ? colors.status.warning : colors.status.error}
+            />
+            <View style={styles.expiryPickerTextContainer}>
+              <Text style={[
+                styles.expiryPickerLabel,
+                !item.expiryDate && styles.expiryPickerLabelMissing,
+              ]}>
+                {item.expiryDate
+                  ? `Expires: ${item.expiryDate}`
+                  : 'No expiry date set'}
+              </Text>
+              <Text style={styles.expiryPickerHint}>Tap to change</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
+          </TouchableOpacity>
 
           <View style={styles.detectedActions}>
             <TouchableOpacity
@@ -929,24 +960,49 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   detectedInfo: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   detectedInfoText: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.sm,
     color: colors.text.secondary,
   },
-  detectedExpiry: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.primary.sage,
-    marginTop: spacing.xs,
+  // Expiry picker button styles
+  expiryPickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
-  detectedExpiryMissing: {
+  expiryPickerSet: {
+    backgroundColor: colors.status.warningBg,
+    borderWidth: 1,
+    borderColor: colors.status.warning,
+  },
+  expiryPickerMissing: {
+    backgroundColor: colors.status.errorBg,
+    borderWidth: 1,
+    borderColor: colors.status.error,
+  },
+  expiryPickerTextContainer: {
+    flex: 1,
+  },
+  expiryPickerLabel: {
     fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
+    fontSize: typography.size.base,
+    fontWeight: typography.weight.medium,
     color: colors.status.warning,
-    marginTop: spacing.xs,
+  },
+  expiryPickerLabelMissing: {
+    color: colors.status.error,
+  },
+  expiryPickerHint: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.xs,
+    color: colors.text.muted,
+    marginTop: 2,
   },
   detectedActions: {
     flexDirection: 'row',
