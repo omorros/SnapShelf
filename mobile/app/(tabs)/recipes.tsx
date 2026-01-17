@@ -13,7 +13,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../services/api';
 import {
@@ -21,23 +21,34 @@ import {
   IngredientInput,
   Recipe,
   TimePreference,
+  SavedRecipe,
 } from '../../types';
 import { colors, typography, spacing, radius, shadows, getExpiryColor } from '../../theme';
 
 type SelectionMode = 'expiring' | 'manual';
 
 export default function RecipesScreen() {
+  const router = useRouter();
+
   // State for ingredient selection
   const [mode, setMode] = useState<SelectionMode>('expiring');
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [selectedIngredients, setSelectedIngredients] = useState<IngredientInput[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State for recipe generation
+  // State for recipe generation - separate storage per mode
   const [generating, setGenerating] = useState(false);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [expiringRecipes, setExpiringRecipes] = useState<Recipe[]>([]);
+  const [manualRecipes, setManualRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [showRecipeModal, setShowRecipeModal] = useState(false);
+
+  // Get current recipes based on mode
+  const recipes = mode === 'expiring' ? expiringRecipes : manualRecipes;
+  const setRecipes = mode === 'expiring' ? setExpiringRecipes : setManualRecipes;
+
+  // Saved recipes state
+  const [savedRecipeTitles, setSavedRecipeTitles] = useState<Set<string>>(new Set());
 
   // Preferences state
   const [showPreferences, setShowPreferences] = useState(false);
@@ -55,10 +66,11 @@ export default function RecipesScreen() {
     }).start();
   }, []);
 
-  // Fetch inventory on focus
+  // Fetch inventory and saved recipes on focus
   useFocusEffect(
     useCallback(() => {
       fetchInventory();
+      fetchSavedRecipes();
     }, [])
   );
 
@@ -90,6 +102,54 @@ export default function RecipesScreen() {
     } catch (error: any) {
       console.log('Failed to get expiring items:', error.message);
     }
+  };
+
+  const fetchSavedRecipes = async () => {
+    try {
+      // Don't block UI - fetch in background
+      const saved = await api.getSavedRecipes();
+      const titles = new Set(saved.map((r) => r.title));
+      setSavedRecipeTitles(titles);
+    } catch (error: any) {
+      // Silently fail - saved status is not critical
+      console.log('Failed to fetch saved recipes:', error.message);
+    }
+  };
+
+  const handleSaveRecipe = async (recipe: Recipe) => {
+    try {
+      await api.saveRecipe(recipe);
+      setSavedRecipeTitles((prev) => new Set([...prev, recipe.title]));
+      Alert.alert('Saved!', 'Recipe added to your favorites');
+    } catch (error: any) {
+      if (error.message.includes('already saved')) {
+        Alert.alert('Already Saved', 'This recipe is already in your favorites');
+      } else {
+        Alert.alert('Error', error.message);
+      }
+    }
+  };
+
+  const handleUnsaveRecipe = async (recipe: Recipe) => {
+    try {
+      // Find the saved recipe by title to get its ID
+      const saved = await api.getSavedRecipes();
+      const savedRecipe = saved.find((r) => r.title === recipe.title);
+      if (savedRecipe) {
+        await api.unsaveRecipe(savedRecipe.id);
+        setSavedRecipeTitles((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(recipe.title);
+          return newSet;
+        });
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const isRecipeSaved = (recipe: Recipe) => {
+    return savedRecipeTitles.has(recipe.title);
   };
 
   const toggleIngredient = (item: InventoryItem) => {
@@ -124,31 +184,38 @@ export default function RecipesScreen() {
       return;
     }
 
+    // Capture current mode to ensure correct state update
+    const currentMode = mode;
+    const currentSetRecipes = currentMode === 'expiring' ? setExpiringRecipes : setManualRecipes;
+
     setGenerating(true);
-    setRecipes([]);
+    currentSetRecipes([]);
     try {
-      // Always send all inventory items with expiry dates
-      const ingredientsToSend: IngredientInput[] = inventoryItems.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit: item.unit,
-        expiry_date: item.expiry_date,
-      }));
+      // For manual mode, only send selected ingredients
+      // For auto mode, send all inventory items
+      const ingredientsToSend: IngredientInput[] = currentMode === 'manual'
+        ? selectedIngredients
+        : inventoryItems.map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            expiry_date: item.expiry_date,
+          }));
 
       // For manual mode, also pass the selected ingredient names
-      const selectedNames = mode === 'manual'
+      const selectedNames = currentMode === 'manual'
         ? selectedIngredients.map((i) => i.name)
         : undefined;
 
       const response = await api.generateRecipes({
         ingredients: ingredientsToSend,
         max_recipes: 3,
-        mode: mode === 'expiring' ? 'auto' : 'manual',
+        mode: currentMode === 'expiring' ? 'auto' : 'manual',
         selected_ingredient_names: selectedNames,
         time_preference: timePreference,
         servings: servings,
       });
-      setRecipes(response.recipes);
+      currentSetRecipes(response.recipes);
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -225,43 +292,64 @@ export default function RecipesScreen() {
     );
   };
 
-  const renderRecipeCard = ({ item, index }: { item: Recipe; index: number }) => (
-    <Animated.View
-      style={[
-        styles.recipeCard,
-        {
-          opacity: headerOpacity,
-          transform: [{
-            translateY: headerOpacity.interpolate({
-              inputRange: [0, 1],
-              outputRange: [20, 0],
-            })
-          }]
-        }
-      ]}
-    >
-      <Pressable
-        style={({ pressed }) => [
-          styles.recipeCardInner,
-          pressed && { opacity: 0.8 },
+  const renderRecipeCard = ({ item, index }: { item: Recipe; index: number }) => {
+    const saved = isRecipeSaved(item);
+    return (
+      <Animated.View
+        style={[
+          styles.recipeCard,
+          {
+            opacity: headerOpacity,
+            transform: [{
+              translateY: headerOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0],
+              })
+            }]
+          }
         ]}
-        onPress={() => openRecipeDetails(item)}
       >
-        <View style={styles.recipeHeader}>
-          <Text style={styles.recipeTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <View
-            style={[
-              styles.difficultyBadge,
-              { backgroundColor: getDifficultyColor(item.difficulty) + '20' },
-            ]}
-          >
-            <Text style={[styles.difficultyText, { color: getDifficultyColor(item.difficulty) }]}>
-              {item.difficulty}
+        <Pressable
+          style={({ pressed }) => [
+            styles.recipeCardInner,
+            pressed && { opacity: 0.8 },
+          ]}
+          onPress={() => openRecipeDetails(item)}
+        >
+          <View style={styles.recipeHeader}>
+            <Text style={styles.recipeTitle} numberOfLines={2}>
+              {item.title}
             </Text>
+            <View style={styles.recipeHeaderRight}>
+              <TouchableOpacity
+                style={styles.bookmarkButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  if (saved) {
+                    handleUnsaveRecipe(item);
+                  } else {
+                    handleSaveRecipe(item);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={saved ? 'bookmark' : 'bookmark-outline'}
+                  size={22}
+                  color={saved ? colors.primary.sage : colors.text.secondary}
+                />
+              </TouchableOpacity>
+              <View
+                style={[
+                  styles.difficultyBadge,
+                  { backgroundColor: getDifficultyColor(item.difficulty) + '20' },
+                ]}
+              >
+                <Text style={[styles.difficultyText, { color: getDifficultyColor(item.difficulty) }]}>
+                  {item.difficulty}
+                </Text>
+              </View>
+            </View>
           </View>
-        </View>
         <Text style={styles.recipeDescription} numberOfLines={2}>
           {item.description}
         </Text>
@@ -289,7 +377,8 @@ export default function RecipesScreen() {
         </View>
       </Pressable>
     </Animated.View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -304,8 +393,19 @@ export default function RecipesScreen() {
     <View style={styles.container}>
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-        <Text style={styles.headerLabel}>AI-Powered</Text>
-        <Text style={styles.headerTitle}>Recipe Ideas</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerLabel}>AI-Powered</Text>
+            <Text style={styles.headerTitle}>Recipe Ideas</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.savedButton}
+            onPress={() => router.push('/saved-recipes')}
+          >
+            <Ionicons name="bookmark" size={20} color={colors.primary.sage} />
+            <Text style={styles.savedButtonText}>Saved</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
       {/* Mode Toggle */}
@@ -318,7 +418,6 @@ export default function RecipesScreen() {
           ]}
           onPress={() => {
             setMode('expiring');
-            setRecipes([]);
           }}
         >
           <Ionicons
@@ -341,7 +440,6 @@ export default function RecipesScreen() {
           onPress={() => {
             setMode('manual');
             setSelectedIngredients([]);
-            setRecipes([]);
           }}
         >
           <Ionicons
@@ -430,8 +528,8 @@ export default function RecipesScreen() {
         )}
       </View>
 
-      {/* Mode-specific content - hide when recipes are shown */}
-      {mode === 'expiring' && recipes.length === 0 && !generating ? (
+      {/* Mode-specific content */}
+      {mode === 'expiring' && expiringRecipes.length === 0 && !generating ? (
         <View style={styles.smartModeSection}>
           <View style={styles.smartModeContent}>
             <View style={styles.smartModeIcon}>
@@ -479,8 +577,9 @@ export default function RecipesScreen() {
             )}
           </View>
         </View>
-      ) : recipes.length === 0 && !generating ? (
+      ) : mode === 'manual' ? (
         <>
+          {/* Always show ingredient selection in manual mode */}
           <View style={styles.selectedSummary}>
             <Text style={styles.selectedCount}>
               {selectedIngredients.length} ingredient
@@ -537,8 +636,10 @@ export default function RecipesScreen() {
             <ActivityIndicator color={colors.text.inverse} />
           ) : (
             <>
-              <Ionicons name="sparkles" size={20} color={colors.text.inverse} />
-              <Text style={styles.generateButtonText}>Generate Recipes</Text>
+              <Ionicons name={recipes.length > 0 ? 'refresh' : 'sparkles'} size={20} color={colors.text.inverse} />
+              <Text style={styles.generateButtonText}>
+                {recipes.length > 0 ? 'Regenerate Recipes' : 'Generate Recipes'}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -561,17 +662,17 @@ export default function RecipesScreen() {
           <ActivityIndicator size="large" color={colors.primary.sage} />
           <Text style={styles.generatingText}>Creating delicious recipes...</Text>
         </View>
-      ) : (
+      ) : mode === 'expiring' ? (
         <View style={styles.emptyRecipes}>
           <View style={styles.emptyRecipesIcon}>
             <Ionicons name="restaurant-outline" size={48} color={colors.primary.sageLight} />
           </View>
           <Text style={styles.emptyRecipesTitle}>No recipes yet</Text>
           <Text style={styles.emptyRecipesSubtext}>
-            Select ingredients and tap Generate to get AI-powered recipe suggestions
+            Tap Generate to get AI-powered recipe suggestions based on your inventory
           </Text>
         </View>
-      )}
+      ) : null}
 
       {/* Recipe Detail Modal */}
       <Modal
@@ -593,7 +694,22 @@ export default function RecipesScreen() {
                   {selectedRecipe.title}
                 </Text>
               </View>
-              <View style={{ width: 44 }} />
+              <TouchableOpacity
+                style={styles.modalBookmarkButton}
+                onPress={() => {
+                  if (isRecipeSaved(selectedRecipe)) {
+                    handleUnsaveRecipe(selectedRecipe);
+                  } else {
+                    handleSaveRecipe(selectedRecipe);
+                  }
+                }}
+              >
+                <Ionicons
+                  name={isRecipeSaved(selectedRecipe) ? 'bookmark' : 'bookmark-outline'}
+                  size={26}
+                  color={isRecipeSaved(selectedRecipe) ? colors.primary.sage : colors.text.secondary}
+                />
+              </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
@@ -732,6 +848,26 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.bold,
     color: colors.text.primary,
     letterSpacing: typography.letterSpacing.tight,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  savedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary.sageMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    gap: spacing.xs,
+  },
+  savedButtonText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    color: colors.primary.sage,
   },
 
   // Mode Toggle
@@ -1105,6 +1241,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
+  recipeHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  bookmarkButton: {
+    padding: spacing.xs,
+  },
   difficultyBadge: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -1222,6 +1366,11 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.semibold,
     color: colors.text.primary,
     textAlign: 'center',
+  },
+  modalBookmarkButton: {
+    padding: spacing.xs,
+    width: 44,
+    alignItems: 'center',
   },
   modalContent: {
     flex: 1,

@@ -47,3 +47,34 @@ class RecipeGenerationResponse(BaseModel):
     recipes: List[RecipeResponse]
     ingredients_used: List[str]
     ingredients_missing: List[str]
+
+
+class SaveRecipeRequest(BaseModel):
+    """Request to save a recipe to favorites"""
+    title: str
+    description: str
+    cooking_time_minutes: int
+    servings: int
+    difficulty: str
+    ingredients: List[RecipeIngredient]
+    instructions: List[str]
+    tips: Optional[str] = None
+    recommendation_reason: str = ""
+
+
+class SavedRecipeResponse(BaseModel):
+    """A saved/favorited recipe"""
+    id: str
+    title: str
+    description: str
+    cooking_time_minutes: int
+    servings: int
+    difficulty: str
+    ingredients: List[RecipeIngredient]
+    instructions: List[str]
+    tips: Optional[str] = None
+    recommendation_reason: str = ""
+    saved_at: str  # ISO format
+
+    class Config:
+        from_attributes = True

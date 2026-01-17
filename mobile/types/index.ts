@@ -164,3 +164,18 @@ export interface RecipeGenerationResponse {
   ingredients_used: string[];
   ingredients_missing: string[];
 }
+
+// Saved Recipe Types
+export interface SavedRecipe {
+  id: string;
+  title: string;
+  description: string;
+  cooking_time_minutes: number;
+  servings: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  ingredients: RecipeIngredient[];
+  instructions: string[];
+  tips?: string | null;
+  recommendation_reason: string;
+  saved_at: string;
+}

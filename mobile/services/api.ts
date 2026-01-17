@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse } from '../types';
+import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse, Recipe, SavedRecipe } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
@@ -273,6 +273,45 @@ class ApiService {
     }
 
     return response.json();
+  }
+
+  // Saved Recipes endpoints
+  async saveRecipe(recipe: Recipe): Promise<SavedRecipe> {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/saved`, {
+      method: 'POST',
+      headers: await this.getHeaders(),
+      body: JSON.stringify(recipe),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to save recipe');
+    }
+
+    return response.json();
+  }
+
+  async getSavedRecipes(): Promise<SavedRecipe[]> {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/saved`, {
+      headers: await this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch saved recipes');
+    }
+
+    return response.json();
+  }
+
+  async unsaveRecipe(recipeId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/recipes/saved/${recipeId}`, {
+      method: 'DELETE',
+      headers: await this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to unsave recipe');
+    }
   }
 }
 

@@ -93,10 +93,11 @@ MODE_AUTO_INSTRUCTIONS = """AUTO MODE - "What should I cook?"
 - Reduce total waste risk by maximizing use of soon-to-expire items"""
 
 MODE_MANUAL_INSTRUCTIONS = """MANUAL MODE - "User selected specific ingredients"
-- The following ingredients are MANDATORY and MUST appear in all recipes: {selected_names}
-- Still apply expiration priority for other ingredients
-- If an expiring item was NOT selected, try to include it anyway if it fits the recipe
-- Manual selection must not disable waste-reduction intelligence"""
+- ONLY use these ingredients from the user's inventory: {selected_names}
+- DO NOT use any other ingredients from the inventory - the user specifically chose these items
+- You may assume basic pantry staples (salt, pepper, oil, butter, garlic, onion, common spices)
+- All recipes MUST be based around the selected ingredients only
+- This is a strict requirement - if user selected chicken, do NOT add beef or other meats"""
 
 
 class RecipeGenerationService:
