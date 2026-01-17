@@ -63,8 +63,8 @@ export default function AddItemScreen() {
   const [manualForm, setManualForm] = useState({
     name: '',
     category: 'Other',
-    quantity: 1,
-    unit: 'Pieces',
+    quantity: 100,
+    unit: 'Grams',
     expiryDate: '',
   });
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -74,8 +74,8 @@ export default function AddItemScreen() {
     id: draft.id,
     name: draft.name,
     category: draft.category || 'Other',
-    quantity: draft.quantity || 1,
-    unit: draft.unit || 'Pieces',
+    quantity: draft.quantity || 100,
+    unit: draft.unit || 'Grams',
     expiryDate: draft.expiration_date || '',
     confirmed: false,
   });
@@ -179,8 +179,8 @@ export default function AddItemScreen() {
       id: `barcode-${barcodeResult.barcode}`,
       name: barcodeResult.name,
       category: barcodeResult.category || 'Other',
-      quantity: 1,
-      unit: 'Pieces',
+      quantity: 100,
+      unit: 'Grams',
       expiryDate: barcodeResult.predicted_expiry || '',
       confirmed: false,
     };
@@ -296,8 +296,8 @@ export default function AddItemScreen() {
     setManualForm({
       name: '',
       category: 'Other',
-      quantity: 1,
-      unit: 'Pieces',
+      quantity: 100,
+      unit: 'Grams',
       expiryDate: '',
     });
   };

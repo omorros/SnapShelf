@@ -47,9 +47,8 @@ const UNIT_CONFIG: Record<string, { base: string; factor: number; group: string 
   // Volume units - base is Milliliters
   'milliliters': { base: 'Milliliters', factor: 1, group: 'volume' },
   'liters': { base: 'Milliliters', factor: 1000, group: 'volume' },
-  // Count units - no conversion
+  // Count units - for fruits, vegetables, eggs, etc.
   'pieces': { base: 'Pieces', factor: 1, group: 'count' },
-  'packages': { base: 'Packages', factor: 1, group: 'packages' },
 };
 
 // Unit groups for picker (display names)
@@ -57,7 +56,6 @@ const UNIT_GROUPS: Record<string, string[]> = {
   weight: ['Grams', 'Kilograms'],
   volume: ['Milliliters', 'Liters'],
   count: ['Pieces'],
-  packages: ['Packages'],
 };
 
 // Normalize unit name for lookup
@@ -136,13 +134,25 @@ const formatQuantityWithUnit = (baseQuantity: number, baseUnit: string): { quant
 // MERGE LOGIC
 // ============================================================================
 
-// Merge items with same name and expiry date, handling unit conversion
+// Get the unit group name for a unit (weight, volume, or 'unknown')
+const getUnitGroupName = (unit: string): string => {
+  const normalized = normalizeUnit(unit);
+  const config = UNIT_CONFIG[normalized];
+  return config?.group || 'unknown';
+};
+
+// Merge items with same name, expiry date, AND unit group
+// Items with incompatible units (e.g., grams vs liters) will NOT merge
 const mergeInventoryItems = (items: InventoryItem[]): MergedInventoryItem[] => {
   const mergeMap = new Map<string, MergedInventoryItem & { baseQuantity: number; baseUnit: string }>();
 
   items.forEach((item) => {
-    // Create a key based on name (lowercase) and expiry date
-    const key = `${item.name.toLowerCase().trim()}_${item.expiry_date}`;
+    // Get the unit group for this item
+    const unitGroup = getUnitGroupName(item.unit);
+
+    // Create a key based on name, expiry date, AND unit group
+    // This ensures items with different unit types don't merge
+    const key = `${item.name.toLowerCase().trim()}_${item.expiry_date}_${unitGroup}`;
 
     if (mergeMap.has(key)) {
       // Merge with existing item - convert to base unit and add
@@ -186,8 +196,8 @@ export default function InventoryScreen() {
   const headerOpacity = useRef(new Animated.Value(0)).current;
   const fabScale = useRef(new Animated.Value(0)).current;
 
-  // Item action modal state
-  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  // Item action modal state - stores merged item info for proper multi-item operations
+  const [selectedItem, setSelectedItem] = useState<MergedInventoryItem | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -273,15 +283,8 @@ export default function InventoryScreen() {
   };
 
   const handleItemPress = (item: MergedInventoryItem) => {
-    // For merged items, select the first underlying item for operations
-    // but store the merged info for display
-    const originalItem = items.find((i) => i.id === item.mergedIds[0]);
-    if (originalItem) {
-      setSelectedItem({
-        ...originalItem,
-        quantity: item.quantity, // Use merged quantity for display
-      });
-    }
+    // Store the full merged item for proper multi-item operations
+    setSelectedItem(item);
     setShowActionModal(true);
   };
 
@@ -302,14 +305,31 @@ export default function InventoryScreen() {
     if (!selectedItem) return;
     setActionLoading(true);
     try {
-      const updated = await api.updateInventoryItem(selectedItem.id, {
+      // For merged items, update the first item with new values and delete the rest
+      // This consolidates merged items into one when edited
+      const [firstId, ...restIds] = selectedItem.mergedIds;
+
+      // Delete extra items if this was a merged item
+      if (restIds.length > 0) {
+        await Promise.all(restIds.map(id => api.deleteInventoryItem(id)));
+      }
+
+      // Update the first item with the edited values
+      await api.updateInventoryItem(firstId, {
         name: editForm.name,
         category: editForm.category.toLowerCase(),
         quantity: editForm.quantity,
         unit: editForm.unit.toLowerCase(),
         expiry_date: editForm.expiryDate,
       });
-      setItems(items.map((i) => (i.id === updated.id ? updated : i)));
+
+      // Refetch inventory from server to ensure correct state
+      const freshData = await api.getInventoryItems();
+      const sorted = freshData.sort((a, b) =>
+        new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+      );
+      setItems(sorted);
+
       setShowEditModal(false);
       setSelectedItem(null);
     } catch (error: any) {
@@ -331,25 +351,60 @@ export default function InventoryScreen() {
     if (!selectedItem) return;
     setActionLoading(true);
     try {
-      // Work in base units for accuracy
-      const itemBaseQty = convertToBaseUnit(selectedItem.quantity, selectedItem.unit);
+      // Fetch fresh data from server to ensure we have accurate quantities
+      const freshItems = await api.getInventoryItems();
+
+      // Get all underlying items for this merged item
+      const mergedItems = selectedItem.mergedIds
+        .map(id => freshItems.find(i => i.id === id))
+        .filter(Boolean) as InventoryItem[];
+
+      if (mergedItems.length === 0) {
+        Alert.alert('Error', 'Items not found');
+        return;
+      }
+
+      // Calculate total quantity in base units
+      let totalBaseQty = 0;
+      for (const item of mergedItems) {
+        totalBaseQty += convertToBaseUnit(item.quantity, item.unit);
+      }
+
+      // Calculate consumed amount in base units
       const consumedBaseQty = convertToBaseUnit(consumeQuantity, consumeUnit);
-      const remainingBaseQty = itemBaseQty - consumedBaseQty;
+
+      // Calculate remaining
+      const remainingBaseQty = totalBaseQty - consumedBaseQty;
+
+      // Get the base unit from the first item
+      const baseUnit = getBaseUnit(mergedItems[0].unit);
 
       if (remainingBaseQty <= 0) {
-        await api.deleteInventoryItem(selectedItem.id);
-        setItems(items.filter((i) => i.id !== selectedItem.id));
+        // Delete ALL merged items
+        await Promise.all(mergedItems.map(item => api.deleteInventoryItem(item.id)));
       } else {
-        // Convert back to a nice display unit
-        const baseUnit = getBaseUnit(selectedItem.unit);
-        const result = formatQuantityWithUnit(remainingBaseQty, baseUnit);
+        // Keep the FIRST item with the remaining quantity, delete the rest
+        const [firstItem, ...restItems] = mergedItems;
 
-        const updated = await api.updateInventoryItem(selectedItem.id, {
+        // Delete extra items
+        if (restItems.length > 0) {
+          await Promise.all(restItems.map(item => api.deleteInventoryItem(item.id)));
+        }
+
+        // Update the first item with the total remaining quantity
+        const result = formatQuantityWithUnit(remainingBaseQty, baseUnit);
+        await api.updateInventoryItem(firstItem.id, {
           quantity: result.quantity,
           unit: result.unit.toLowerCase(),
         });
-        setItems(items.map((i) => (i.id === updated.id ? updated : i)));
       }
+
+      // Refetch inventory from server to ensure correct state
+      const freshData = await api.getInventoryItems();
+      const sorted = freshData.sort((a, b) =>
+        new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+      );
+      setItems(sorted);
 
       setShowConsumeModal(false);
       setSelectedItem(null);
@@ -362,9 +417,12 @@ export default function InventoryScreen() {
 
   const handleDelete = async () => {
     if (!selectedItem) return;
+    const itemCount = selectedItem.mergedIds.length;
     Alert.alert(
       'Delete Item',
-      `Are you sure you want to delete "${selectedItem.name}"?`,
+      itemCount > 1
+        ? `Are you sure you want to delete all ${itemCount} "${selectedItem.name}" entries (${selectedItem.quantity} ${selectedItem.unit} total)?`
+        : `Are you sure you want to delete "${selectedItem.name}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -373,8 +431,18 @@ export default function InventoryScreen() {
           onPress: async () => {
             setActionLoading(true);
             try {
-              await api.deleteInventoryItem(selectedItem.id);
-              setItems(items.filter((i) => i.id !== selectedItem.id));
+              // Delete all merged items
+              await Promise.all(
+                selectedItem.mergedIds.map(id => api.deleteInventoryItem(id))
+              );
+
+              // Refetch inventory from server to ensure correct state
+              const freshData = await api.getInventoryItems();
+              const sorted = freshData.sort((a, b) =>
+                new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+              );
+              setItems(sorted);
+
               setShowActionModal(false);
               setSelectedItem(null);
             } catch (error: any) {

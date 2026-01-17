@@ -85,14 +85,13 @@ export const CATEGORIES = [
   'Other',
 ] as const;
 
-// Unit options
+// Unit options - weight, volume, and count
 export const UNITS = [
   'Pieces',
   'Grams',
   'Kilograms',
-  'Liters',
   'Milliliters',
-  'Packages',
+  'Liters',
 ] as const;
 
 // Auth Types
