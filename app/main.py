@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.core.database import engine, Base
-from app.models import user, draft_item, inventory_item  # noqa: F401
+from app.models import user, draft_item, inventory_item, saved_recipe  # noqa: F401
 from app.routers import auth, draft_items, inventory_items, expiry_prediction, ingestion, recipes
 
 
