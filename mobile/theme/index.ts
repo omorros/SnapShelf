@@ -643,7 +643,7 @@ export function getCategoryIcon(category: string): string {
     poultry: 'restaurant',
     fish: 'fish',
     seafood: 'fish',
-    grains: 'grain',
+    grains: 'layers',
     snacks: 'fast-food',
     beverages: 'cafe',
     frozen: 'snow',
