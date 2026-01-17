@@ -25,17 +25,28 @@ DETECTION_PROMPT = """Analyze this image and identify all visible food items.
 
 For each food item you can clearly identify, provide:
 - name: specific food name (e.g., "whole milk", "chicken breast", "romaine lettuce")
-- category: one of these categories ONLY: dairy, meat, poultry, fish, seafood, vegetables, fruits, bread, bakery, eggs, condiments, beverages, snacks, frozen, canned, other
+- category: one of these categories ONLY (use exact capitalization):
+  - Fruits (apples, bananas, oranges, berries, etc.)
+  - Vegetables (lettuce, tomatoes, carrots, onions, etc.)
+  - Dairy (milk, cheese, yogurt, butter, eggs, etc.)
+  - Meat (beef, pork, chicken, turkey, lamb, etc.)
+  - Fish (salmon, tuna, cod, shrimp, seafood, etc.)
+  - Grains (pasta, rice, bread, cereals, oats, gnocchi, noodles, flour, etc.)
+  - Snacks (chips, cookies, crackers, candy, etc.)
+  - Beverages (juice, soda, water, coffee, tea, etc.)
+  - Frozen (ice cream, frozen meals, frozen vegetables, etc.)
+  - Condiments (ketchup, mustard, mayo, sauces, spices, etc.)
+  - Other (anything that doesn't fit above)
 
 Rules:
 - Only include food items you can clearly identify
 - Be specific with names (e.g., "cheddar cheese" not just "cheese")
-- Use lowercase for all values
-- If you cannot determine the category, use "other"
+- Use the EXACT category names shown above (capitalized)
+- If you cannot determine the category, use "Other"
 - Do not include non-food items
 
 Return a JSON object with this exact structure:
-{"items": [{"name": "item name", "category": "category"}]}
+{"items": [{"name": "item name", "category": "Category"}]}
 
 If no food items are visible, return: {"items": []}"""
 

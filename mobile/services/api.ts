@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { Token, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse, Recipe, SavedRecipe } from '../types';
+import { Token, User, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse, Recipe, SavedRecipe } from '../types';
 
 // Update this to your backend URL
 // const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
@@ -78,6 +78,18 @@ class ApiService {
 
   async logout() {
     await this.clearToken();
+  }
+
+  async getCurrentUser(): Promise<User> {
+    const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      headers: await this.getHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch user profile');
+    }
+
+    return response.json();
   }
 
   // Draft items endpoints

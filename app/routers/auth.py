@@ -1,11 +1,12 @@
 """
 Authentication router for user registration and login.
 """
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, create_access_token
+from app.core.security import hash_password, verify_password, create_access_token, get_current_user
 from app.models.user import User
 from app.schemas.auth import UserRegister, UserLogin, Token, UserResponse
 
@@ -85,3 +86,20 @@ def login(
     access_token = create_access_token(user_id=user.id)
 
     return Token(access_token=access_token)
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(
+    current_user_id: UUID = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the current authenticated user's profile.
+    """
+    user = db.query(User).filter(User.id == current_user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return user

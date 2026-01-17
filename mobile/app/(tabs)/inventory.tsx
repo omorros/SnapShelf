@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -90,6 +90,13 @@ export default function InventoryScreen() {
   // Consume modal state
   const [showConsumeModal, setShowConsumeModal] = useState(false);
   const [consumeQuantity, setConsumeQuantity] = useState(1);
+
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [expiryFilter, setExpiryFilter] = useState<'all' | 'expiring' | 'expired'>('all');
+  const [sortBy, setSortBy] = useState<'expiry' | 'name' | 'category'>('expiry');
+  const [showFilters, setShowFilters] = useState(false);
 
   // Initial animations
   useEffect(() => {
@@ -292,6 +299,59 @@ export default function InventoryScreen() {
     return { expired, expiringSoon, fresh, total: items.length };
   };
 
+  // Filtered and sorted items
+  const filteredAndSortedItems = useMemo(() => {
+    let result = [...displayItems];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(item =>
+        item.name.toLowerCase().includes(query)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory) {
+      result = result.filter(item =>
+        item.category.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    }
+
+    // Expiry status filter
+    if (expiryFilter !== 'all') {
+      result = result.filter(item => {
+        const days = getDaysUntilExpiry(item.expiry_date);
+        if (expiryFilter === 'expired') return days < 0;
+        if (expiryFilter === 'expiring') return days >= 0 && days <= 3;
+        return true;
+      });
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'category':
+          return a.category.localeCompare(b.category) ||
+                 new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
+        case 'expiry':
+        default:
+          return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
+      }
+    });
+
+    return result;
+  }, [displayItems, searchQuery, selectedCategory, expiryFilter, sortBy]);
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory(null);
+    setExpiryFilter('all');
+    setSortBy('expiry');
+  };
+
   const renderInventoryItem = ({ item, index }: { item: MergedInventoryItem; index: number }) => {
     const daysUntilExpiry = getDaysUntilExpiry(item.expiry_date);
     const expiryInfo = getExpiryColor(daysUntilExpiry);
@@ -395,6 +455,108 @@ export default function InventoryScreen() {
         )}
       </Animated.View>
 
+      {/* Search Bar */}
+      {items.length > 0 && (
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Ionicons name="search" size={18} color={colors.text.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search items..."
+              placeholderTextColor={colors.text.muted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color={colors.text.muted} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[styles.filterButton, showFilters && styles.filterButtonActive]}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Ionicons
+              name="options-outline"
+              size={20}
+              color={showFilters ? colors.text.inverse : colors.primary.sage}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Filter Panel */}
+      {showFilters && items.length > 0 && (
+        <View style={styles.filterPanel}>
+          {/* Category Filter */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Category</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <TouchableOpacity
+                style={[styles.filterChip, !selectedCategory && styles.filterChipActive]}
+                onPress={() => setSelectedCategory(null)}
+              >
+                <Text style={[styles.filterChipText, !selectedCategory && styles.filterChipTextActive]}>
+                  All
+                </Text>
+              </TouchableOpacity>
+              {CATEGORIES.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.filterChip, selectedCategory === cat && styles.filterChipActive]}
+                  onPress={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                >
+                  <Text style={[styles.filterChipText, selectedCategory === cat && styles.filterChipTextActive]}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Expiry Status Filter */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Status</Text>
+            <View style={styles.filterChips}>
+              {(['all', 'expiring', 'expired'] as const).map(status => (
+                <TouchableOpacity
+                  key={status}
+                  style={[styles.filterChip, expiryFilter === status && styles.filterChipActive]}
+                  onPress={() => setExpiryFilter(status)}
+                >
+                  <Text style={[styles.filterChipText, expiryFilter === status && styles.filterChipTextActive]}>
+                    {status === 'all' ? 'All' : status === 'expiring' ? 'Expiring Soon' : 'Expired'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Sort Options */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Sort by</Text>
+            <View style={styles.filterChips}>
+              {[
+                { key: 'expiry', label: 'Expiry Date' },
+                { key: 'name', label: 'Name' },
+                { key: 'category', label: 'Category' },
+              ].map(option => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[styles.filterChip, sortBy === option.key && styles.filterChipActive]}
+                  onPress={() => setSortBy(option.key as 'expiry' | 'name' | 'category')}
+                >
+                  <Text style={[styles.filterChipText, sortBy === option.key && styles.filterChipTextActive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Content */}
       {loading ? (
         <View style={styles.centered}>
@@ -415,9 +577,20 @@ export default function InventoryScreen() {
             <Text style={styles.emptyButtonText}>Add Your First Item</Text>
           </TouchableOpacity>
         </View>
+      ) : filteredAndSortedItems.length === 0 ? (
+        <View style={styles.noResultsContainer}>
+          <Ionicons name="search-outline" size={48} color={colors.text.muted} />
+          <Text style={styles.noResultsTitle}>No items found</Text>
+          <Text style={styles.noResultsSubtext}>
+            Try adjusting your search or filters
+          </Text>
+          <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+            <Text style={styles.clearFiltersText}>Clear Filters</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
-          data={displayItems}
+          data={filteredAndSortedItems}
           renderItem={renderInventoryItem}
           keyExtractor={(item) => item.mergedIds.join('-')}
           contentContainerStyle={styles.list}
@@ -1397,5 +1570,119 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+
+  // Search
+  searchContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  searchInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.card,
+    borderRadius: radius.base,
+    paddingHorizontal: spacing.md,
+    height: 44,
+    gap: spacing.sm,
+    ...shadows.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    color: colors.text.primary,
+  },
+  filterButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.base,
+    backgroundColor: colors.primary.sageMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterButtonActive: {
+    backgroundColor: colors.primary.sage,
+  },
+
+  // Filter Panel
+  filterPanel: {
+    backgroundColor: colors.background.card,
+    marginHorizontal: spacing.base,
+    marginBottom: spacing.md,
+    borderRadius: radius.lg,
+    padding: spacing.base,
+    ...shadows.sm,
+  },
+  filterRow: {
+    marginBottom: spacing.md,
+  },
+  filterLabel: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  filterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+    marginRight: spacing.sm,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary.sage,
+  },
+  filterChipText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
+  },
+  filterChipTextActive: {
+    color: colors.text.inverse,
+  },
+
+  // No Results
+  noResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  noResultsTitle: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.lg,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.md,
+  },
+  noResultsSubtext: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  clearFiltersButton: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary.sage,
+    borderRadius: radius.base,
+  },
+  clearFiltersText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.md,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.inverse,
   },
 });
