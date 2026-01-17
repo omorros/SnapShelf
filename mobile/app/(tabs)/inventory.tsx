@@ -35,31 +35,144 @@ interface MergedInventoryItem extends InventoryItem {
   mergedCount: number;  // How many items were merged
 }
 
-// Merge items with same name and expiry date
+// ============================================================================
+// UNIT CONVERSION SYSTEM
+// ============================================================================
+
+// Maps actual unit names to their base units and conversion factors
+const UNIT_CONFIG: Record<string, { base: string; factor: number; group: string }> = {
+  // Weight units - base is Grams
+  'grams': { base: 'Grams', factor: 1, group: 'weight' },
+  'kilograms': { base: 'Grams', factor: 1000, group: 'weight' },
+  // Volume units - base is Milliliters
+  'milliliters': { base: 'Milliliters', factor: 1, group: 'volume' },
+  'liters': { base: 'Milliliters', factor: 1000, group: 'volume' },
+  // Count units - no conversion
+  'pieces': { base: 'Pieces', factor: 1, group: 'count' },
+  'packages': { base: 'Packages', factor: 1, group: 'packages' },
+};
+
+// Unit groups for picker (display names)
+const UNIT_GROUPS: Record<string, string[]> = {
+  weight: ['Grams', 'Kilograms'],
+  volume: ['Milliliters', 'Liters'],
+  count: ['Pieces'],
+  packages: ['Packages'],
+};
+
+// Normalize unit name for lookup
+const normalizeUnit = (unit: string): string => {
+  return unit.toLowerCase().trim();
+};
+
+// Get the unit group for a given unit (for unit picker)
+const getUnitGroup = (unit: string): string[] => {
+  const normalized = normalizeUnit(unit);
+  const config = UNIT_CONFIG[normalized];
+  if (config) {
+    return UNIT_GROUPS[config.group] || [unit];
+  }
+  return [unit];
+};
+
+// Convert quantity to base unit (Grams for weight, Milliliters for volume)
+const convertToBaseUnit = (quantity: number, unit: string): number => {
+  const normalized = normalizeUnit(unit);
+  const config = UNIT_CONFIG[normalized];
+  if (config) {
+    return quantity * config.factor;
+  }
+  return quantity;
+};
+
+// Get base unit name for a given unit
+const getBaseUnit = (unit: string): string => {
+  const normalized = normalizeUnit(unit);
+  const config = UNIT_CONFIG[normalized];
+  return config?.base || unit;
+};
+
+// Format quantity with appropriate unit (e.g., 1500 Grams -> 1.5 Kilograms)
+const formatQuantityWithUnit = (baseQuantity: number, baseUnit: string): { quantity: number; unit: string } => {
+  const normalized = normalizeUnit(baseUnit);
+
+  // Weight: prefer Kilograms for >= 1000g
+  if (normalized === 'grams') {
+    if (baseQuantity >= 1000) {
+      return {
+        quantity: Math.round((baseQuantity / 1000) * 100) / 100,
+        unit: 'Kilograms'
+      };
+    }
+    return {
+      quantity: Math.round(baseQuantity * 10) / 10,
+      unit: 'Grams'
+    };
+  }
+
+  // Volume: prefer Liters for >= 1000ml
+  if (normalized === 'milliliters') {
+    if (baseQuantity >= 1000) {
+      return {
+        quantity: Math.round((baseQuantity / 1000) * 100) / 100,
+        unit: 'Liters'
+      };
+    }
+    return {
+      quantity: Math.round(baseQuantity * 10) / 10,
+      unit: 'Milliliters'
+    };
+  }
+
+  // Other units: return as-is with proper casing
+  const properCase = baseUnit.charAt(0).toUpperCase() + baseUnit.slice(1).toLowerCase();
+  return {
+    quantity: Math.round(baseQuantity * 100) / 100,
+    unit: properCase
+  };
+};
+
+// ============================================================================
+// MERGE LOGIC
+// ============================================================================
+
+// Merge items with same name and expiry date, handling unit conversion
 const mergeInventoryItems = (items: InventoryItem[]): MergedInventoryItem[] => {
-  const mergeMap = new Map<string, MergedInventoryItem>();
+  const mergeMap = new Map<string, MergedInventoryItem & { baseQuantity: number; baseUnit: string }>();
 
   items.forEach((item) => {
     // Create a key based on name (lowercase) and expiry date
     const key = `${item.name.toLowerCase().trim()}_${item.expiry_date}`;
 
     if (mergeMap.has(key)) {
-      // Merge with existing item
+      // Merge with existing item - convert to base unit and add
       const existing = mergeMap.get(key)!;
-      existing.quantity += item.quantity;
+      const itemBaseQty = convertToBaseUnit(item.quantity, item.unit);
+      existing.baseQuantity += itemBaseQty;
       existing.mergedIds.push(item.id);
       existing.mergedCount += 1;
+
+      // Update display quantity and unit based on total
+      const result = formatQuantityWithUnit(existing.baseQuantity, existing.baseUnit);
+      existing.quantity = result.quantity;
+      existing.unit = result.unit;
     } else {
       // Create new merged item
+      const baseQty = convertToBaseUnit(item.quantity, item.unit);
+      const baseUnit = getBaseUnit(item.unit);
+
       mergeMap.set(key, {
         ...item,
         mergedIds: [item.id],
         mergedCount: 1,
+        baseQuantity: baseQty,
+        baseUnit: baseUnit,
       });
     }
   });
 
-  return Array.from(mergeMap.values());
+  // Clean up internal properties before returning
+  return Array.from(mergeMap.values()).map(({ baseQuantity, baseUnit, ...item }) => item);
 };
 
 export default function InventoryScreen() {
@@ -92,6 +205,7 @@ export default function InventoryScreen() {
   // Consume modal state
   const [showConsumeModal, setShowConsumeModal] = useState(false);
   const [consumeQuantity, setConsumeQuantity] = useState(1);
+  const [consumeUnit, setConsumeUnit] = useState('');
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,6 +322,7 @@ export default function InventoryScreen() {
   const handleConsume = () => {
     if (!selectedItem) return;
     setConsumeQuantity(1);
+    setConsumeUnit(selectedItem.unit); // Start with the item's unit
     setShowActionModal(false);
     setShowConsumeModal(true);
   };
@@ -216,14 +331,22 @@ export default function InventoryScreen() {
     if (!selectedItem) return;
     setActionLoading(true);
     try {
-      const remaining = selectedItem.quantity - consumeQuantity;
+      // Work in base units for accuracy
+      const itemBaseQty = convertToBaseUnit(selectedItem.quantity, selectedItem.unit);
+      const consumedBaseQty = convertToBaseUnit(consumeQuantity, consumeUnit);
+      const remainingBaseQty = itemBaseQty - consumedBaseQty;
 
-      if (remaining <= 0) {
+      if (remainingBaseQty <= 0) {
         await api.deleteInventoryItem(selectedItem.id);
         setItems(items.filter((i) => i.id !== selectedItem.id));
       } else {
+        // Convert back to a nice display unit
+        const baseUnit = getBaseUnit(selectedItem.unit);
+        const result = formatQuantityWithUnit(remainingBaseQty, baseUnit);
+
         const updated = await api.updateInventoryItem(selectedItem.id, {
-          quantity: remaining,
+          quantity: result.quantity,
+          unit: result.unit.toLowerCase(),
         });
         setItems(items.map((i) => (i.id === updated.id ? updated : i)));
       }
@@ -869,34 +992,64 @@ export default function InventoryScreen() {
                   value={String(consumeQuantity)}
                   onChangeText={(text) => {
                     const num = parseFloat(text) || 0;
-                    const maxQty = selectedItem?.quantity || 1;
-                    setConsumeQuantity(Math.min(num, maxQty));
+                    setConsumeQuantity(num);
                   }}
                   keyboardType="numeric"
                   selectTextOnFocus
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                 />
-                <Text style={styles.consumeUnitLabel}>{selectedItem?.unit}</Text>
               </View>
 
-              {selectedItem && consumeQuantity >= selectedItem.quantity && (
-                <View style={styles.consumeWarningBox}>
-                  <Ionicons name="information-circle" size={18} color={colors.status.warning} />
-                  <Text style={styles.consumeWarning}>
-                    This will remove the item from your inventory
-                  </Text>
-                </View>
-              )}
+              {/* Unit picker */}
+              <View style={styles.consumeUnitPicker}>
+                {selectedItem && getUnitGroup(selectedItem.unit).map((u) => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[
+                      styles.consumeUnitChip,
+                      normalizeUnit(consumeUnit) === normalizeUnit(u) && styles.consumeUnitChipSelected,
+                    ]}
+                    onPress={() => setConsumeUnit(u)}
+                  >
+                    <Text
+                      style={[
+                        styles.consumeUnitChipText,
+                        normalizeUnit(consumeUnit) === normalizeUnit(u) && styles.consumeUnitChipTextSelected,
+                      ]}
+                    >
+                      {u}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-              {selectedItem && consumeQuantity < selectedItem.quantity && (
-                <View style={styles.consumeInfoBox}>
-                  <Ionicons name="information-circle" size={18} color={colors.primary.sage} />
-                  <Text style={styles.consumeInfo}>
-                    {selectedItem.quantity - consumeQuantity} {selectedItem.unit} will remain
-                  </Text>
-                </View>
-              )}
+              {selectedItem && (() => {
+                const itemBaseQty = convertToBaseUnit(selectedItem.quantity, selectedItem.unit);
+                const consumedBaseQty = convertToBaseUnit(consumeQuantity, consumeUnit);
+                const remainingBaseQty = itemBaseQty - consumedBaseQty;
+                const baseUnit = getBaseUnit(selectedItem.unit);
+                const remaining = formatQuantityWithUnit(Math.max(0, remainingBaseQty), baseUnit);
+
+                if (remainingBaseQty <= 0) {
+                  return (
+                    <View style={styles.consumeWarningBox}>
+                      <Ionicons name="information-circle" size={18} color={colors.status.warning} />
+                      <Text style={styles.consumeWarning}>
+                        This will remove the item from your inventory
+                      </Text>
+                    </View>
+                  );
+                }
+                return (
+                  <View style={styles.consumeInfoBox}>
+                    <Ionicons name="information-circle" size={18} color={colors.primary.sage} />
+                    <Text style={styles.consumeInfo}>
+                      {remaining.quantity} {remaining.unit} will remain
+                    </Text>
+                  </View>
+                );
+              })()}
             </View>
 
             <View style={styles.consumeModalButtons}>
@@ -1543,6 +1696,31 @@ const styles = StyleSheet.create({
     fontSize: typography.size.lg,
     color: colors.text.secondary,
     fontWeight: typography.weight.medium,
+  },
+  consumeUnitPicker: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  consumeUnitChip: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+  },
+  consumeUnitChipSelected: {
+    backgroundColor: colors.primary.sage,
+  },
+  consumeUnitChipText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.base,
+    fontWeight: typography.weight.medium,
+    color: colors.text.secondary,
+  },
+  consumeUnitChipTextSelected: {
+    color: colors.text.inverse,
   },
   consumeWarningBox: {
     flexDirection: 'row',
