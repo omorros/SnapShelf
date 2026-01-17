@@ -21,7 +21,6 @@ import { BlurView } from 'expo-blur';
 import { Calendar } from 'react-native-calendars';
 import { api } from '../../services/api';
 import { InventoryItem, CATEGORIES, UNITS } from '../../types';
-import { useAuth } from '../../services/auth';
 import theme, { colors, typography, spacing, radius, shadows, getExpiryColor, getCategoryColor, getCategoryIcon } from '../../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -64,7 +63,6 @@ export default function InventoryScreen() {
   const [displayItems, setDisplayItems] = useState<MergedInventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { logout } = useAuth();
   const router = useRouter();
 
   // Animation values
@@ -263,13 +261,6 @@ export default function InventoryScreen() {
     );
   };
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', onPress: () => logout() },
-    ]);
-  };
-
   const handleAddItem = () => {
     router.push('/add-item');
   };
@@ -422,9 +413,6 @@ export default function InventoryScreen() {
             <Text style={styles.headerGreeting}>Your Pantry</Text>
             <Text style={styles.headerTitle}>My Foods</Text>
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.profileButton}>
-            <Ionicons name="person-circle-outline" size={32} color={colors.primary.sage} />
-          </TouchableOpacity>
         </View>
 
         {/* Status Pills */}
@@ -976,9 +964,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.bold,
     color: colors.text.primary,
     letterSpacing: typography.letterSpacing.tight,
-  },
-  profileButton: {
-    padding: spacing.xs,
   },
 
   // Status Pills
