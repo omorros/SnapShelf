@@ -92,7 +92,7 @@ class GPT4oVisionClient:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
@@ -101,14 +101,15 @@ class GPT4oVisionClient:
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/{image_type};base64,{base64_image}"
+                                    "url": f"data:image/{image_type};base64,{base64_image}",
+                                    "detail": "low"
                                 }
                             }
                         ]
                     }
                 ],
                 response_format={"type": "json_object"},
-                max_tokens=1000
+                max_tokens=500
             )
         except Exception as e:
             raise RuntimeError(f"GPT-4o API error: {str(e)}")
