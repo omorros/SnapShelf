@@ -394,10 +394,7 @@ export default function RecipesScreen() {
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerLabel}>AI-Powered</Text>
-            <Text style={styles.headerTitle}>Recipe Ideas</Text>
-          </View>
+          <Text style={styles.headerTitle}>Recipe Ideas</Text>
           <TouchableOpacity
             style={styles.savedButton}
             onPress={() => router.push('/saved-recipes')}
@@ -832,15 +829,6 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: spacing.md,
     backgroundColor: colors.background.primary,
-  },
-  headerLabel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.semibold,
-    color: colors.primary.sage,
-    letterSpacing: typography.letterSpacing.wider,
-    textTransform: 'uppercase',
-    marginBottom: 4,
   },
   headerTitle: {
     fontFamily: typography.fontFamily.display,
