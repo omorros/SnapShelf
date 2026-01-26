@@ -1,52 +1,31 @@
 import { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  Modal,
-  Dimensions,
-  Pressable,
-  Keyboard,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Calendar } from 'react-native-calendars';
 import * as ImagePicker from 'expo-image-picker';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import { api } from '../services/api';
-import { DraftItem, InventoryItemCreate, BarcodeLookupResult, CATEGORIES, UNITS } from '../types';
-import { colors, typography, spacing, radius, shadows } from '../theme';
+import { DraftItem, InventoryItemCreate, BarcodeLookupResult } from '../types';
+import { colors, typography, spacing, radius } from '../theme';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// New Components
+import { Screen } from '../components/ui/Screen';
+import { Button } from '../components/ui/Button';
+import { ScannerView } from '../components/add-item/ScannerView';
+import { ManualForm } from '../components/add-item/ManualForm';
+import { DetectedList, DetectedItem } from '../components/add-item/DetectedList';
+import { EditItemModal } from '../components/add-item/EditItemModal';
 
-// Types for detected items
-interface DetectedItem {
-  id: string;
-  name: string;
-  category: string;
-  quantity: number;
-  unit: string;
-  expiryDate: string;
-  confirmed: boolean;
-}
-
-// Screen modes
 type ScreenMode = 'options' | 'scanning' | 'detected' | 'manual' | 'barcode';
 
 export default function AddItemScreen() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
 
-  // Screen state
   const [mode, setMode] = useState<ScreenMode>('options');
   const [loading, setLoading] = useState(false);
 
-  // Barcode scanner state
+  // Barcode state
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeResult, setBarcodeResult] = useState<BarcodeLookupResult | null>(null);
@@ -59,17 +38,7 @@ export default function AddItemScreen() {
   const [editingItem, setEditingItem] = useState<DetectedItem | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Manual form state
-  const [manualForm, setManualForm] = useState({
-    name: '',
-    category: 'Other',
-    quantity: 100,
-    unit: 'Grams',
-    expiryDate: '',
-  });
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-
-  // Convert DraftItem to DetectedItem
+  // --- Helpers ---
   const draftToDetected = (draft: DraftItem): DetectedItem => ({
     id: draft.id,
     name: draft.name,
@@ -80,32 +49,23 @@ export default function AddItemScreen() {
     confirmed: false,
   });
 
-  // Handle image scan
+  // --- Actions ---
   const handleScanImage = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow camera access');
-      return;
-    }
+    if (status !== 'granted') return Alert.alert('Permission needed', 'Please allow camera access');
 
     Alert.alert('Add Photo', 'Choose an option', [
       {
         text: 'Take Photo',
         onPress: async () => {
-          const result = await ImagePicker.launchCameraAsync({
-            quality: 0.5,
-            exif: false,
-          });
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.5, exif: false });
           if (!result.canceled) processImage(result.assets[0].uri);
         },
       },
       {
         text: 'Choose from Gallery',
         onPress: async () => {
-          const result = await ImagePicker.launchImageLibraryAsync({
-            quality: 0.5,
-            exif: false,
-          });
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.5, exif: false });
           if (!result.canceled) processImage(result.assets[0].uri);
         },
       },
@@ -133,16 +93,11 @@ export default function AddItemScreen() {
     }
   };
 
-  // Handle barcode scan - open camera scanner
   const handleScanBarcode = async () => {
     if (!permission?.granted) {
       const result = await requestPermission();
-      if (!result.granted) {
-        Alert.alert('Permission needed', 'Please allow camera access to scan barcodes');
-        return;
-      }
+      if (!result.granted) return Alert.alert('Permission needed', 'Camera access required');
     }
-    // Reset barcode state
     setScannedBarcode(null);
     setBarcodeResult(null);
     setBarcodeLoading(false);
@@ -150,12 +105,9 @@ export default function AddItemScreen() {
     setMode('barcode');
   };
 
-  // Handle barcode detected by camera
   const handleBarcodeScanned = async (data: string) => {
-    // Prevent duplicate scans
     if (lastScannedRef.current === data || barcodeLoading) return;
     lastScannedRef.current = data;
-
     setScannedBarcode(data);
     setBarcodeLoading(true);
 
@@ -163,18 +115,15 @@ export default function AddItemScreen() {
       const result = await api.lookupBarcode(data);
       setBarcodeResult(result);
     } catch (error: any) {
-      Alert.alert('Lookup Failed', error.message || 'Could not look up barcode');
+      Alert.alert('Lookup Failed', error.message);
       setBarcodeResult(null);
     } finally {
       setBarcodeLoading(false);
     }
   };
 
-  // Use the scanned barcode result
   const useBarcodeResult = () => {
     if (!barcodeResult) return;
-
-    // Convert to detected item format
     const detectedItem: DetectedItem = {
       id: `barcode-${barcodeResult.barcode}`,
       name: barcodeResult.name,
@@ -184,27 +133,13 @@ export default function AddItemScreen() {
       expiryDate: barcodeResult.predicted_expiry || '',
       confirmed: false,
     };
-
     setDetectedItems([detectedItem]);
     setMode('detected');
   };
 
-  // Scan another barcode
-  const scanAnotherBarcode = () => {
-    setScannedBarcode(null);
-    setBarcodeResult(null);
-    lastScannedRef.current = null;
-  };
-
-  // Handle manual entry
-  const handleManualEntry = () => {
-    setMode('manual');
-  };
-
-  // Confirm single detected item
   const confirmItem = async (item: DetectedItem) => {
     if (!item.expiryDate) {
-      Alert.alert('Missing Date', 'Please set an expiry date before confirming');
+      Alert.alert('Missing Date', 'Please set an expiry date');
       setEditingItem(item);
       setShowEditModal(true);
       return;
@@ -212,583 +147,85 @@ export default function AddItemScreen() {
 
     setLoading(true);
     try {
-      const inventoryData: InventoryItemCreate = {
+      await api.addToInventory({
         name: item.name,
         category: item.category.toLowerCase(),
         quantity: item.quantity,
         unit: item.unit.toLowerCase(),
         storage_location: 'fridge',
         expiry_date: item.expiryDate,
-      };
+      });
 
-      await api.addToInventory(inventoryData);
-
-      // Mark as confirmed and remove from list
       setDetectedItems((prev) => prev.filter((i) => i.id !== item.id));
-
-      // If no more items, show success and go back
       if (detectedItems.length === 1) {
-        Alert.alert('Success', 'Item added to inventory!', [
-          { text: 'OK', onPress: () => router.back() },
-        ]);
+        Alert.alert('Success', 'Item added to inventory!', [{ text: 'OK', onPress: () => router.back() }]);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add item');
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Skip item
-  const skipItem = (item: DetectedItem) => {
-    setDetectedItems((prev) => prev.filter((i) => i.id !== item.id));
-    if (detectedItems.length === 1) {
-      router.back();
-    }
-  };
-
-  // Save edited item
-  const saveEditedItem = () => {
-    if (!editingItem) return;
-    setDetectedItems((prev) =>
-      prev.map((i) => (i.id === editingItem.id ? editingItem : i))
-    );
-    setShowEditModal(false);
-    setEditingItem(null);
-  };
-
-  // Save manual entry
-  const saveManualEntry = async () => {
-    if (!manualForm.name.trim()) {
-      Alert.alert('Error', 'Please enter a product name');
-      return;
-    }
-    if (!manualForm.expiryDate) {
-      Alert.alert('Error', 'Please select an expiry date');
-      return;
-    }
+  const handleManualSave = async (data: any) => {
+    if (!data.name.trim()) return Alert.alert('Error', 'Enter product name');
+    if (!data.expiryDate) return Alert.alert('Error', 'Select expiry date');
 
     setLoading(true);
     try {
-      const inventoryData: InventoryItemCreate = {
-        name: manualForm.name.trim(),
-        category: manualForm.category.toLowerCase(),
-        quantity: manualForm.quantity,
-        unit: manualForm.unit.toLowerCase(),
+      await api.addToInventory({
+        name: data.name.trim(),
+        category: data.category.toLowerCase(),
+        quantity: data.quantity,
+        unit: data.unit.toLowerCase(),
         storage_location: 'fridge',
-        expiry_date: manualForm.expiryDate,
-      };
+        expiry_date: data.expiryDate,
+      });
 
-      await api.addToInventory(inventoryData);
-
-      Alert.alert('Success', 'Item added to inventory!', [
-        { text: 'Add More', onPress: resetManualForm },
+      Alert.alert('Success', 'Item added!', [
+        { text: 'Add More', onPress: () => { } }, // Form resets itself or we force remount
         { text: 'Done', onPress: () => router.back() },
       ]);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add item');
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const resetManualForm = () => {
-    setManualForm({
-      name: '',
-      category: 'Other',
-      quantity: 100,
-      unit: 'Grams',
-      expiryDate: '',
-    });
-  };
-
-  // Done with detected items
-  const handleDone = () => {
-    router.back();
-  };
-
-  // Go back to options
   const handleBack = () => {
-    if (mode === 'manual' || mode === 'detected' || mode === 'barcode') {
+    if (mode !== 'options') {
       setMode('options');
       setDetectedItems([]);
-      resetManualForm();
-      setScannedBarcode(null);
-      setBarcodeResult(null);
-      lastScannedRef.current = null;
     } else {
       router.back();
     }
   };
 
-  // Render options view
-  const renderOptions = () => (
-    <View style={styles.optionsContainer}>
-      <Text style={styles.optionsTitle}>Add Food</Text>
-      <Text style={styles.optionsSubtitle}>Choose how to add items</Text>
+  // --- Renders ---
 
-      <TouchableOpacity style={styles.optionButton} onPress={handleScanImage}>
-        <View style={[styles.optionIcon, { backgroundColor: colors.primary.sageMuted }]}>
-          <Ionicons name="camera" size={28} color={colors.primary.sage} />
-        </View>
-        <View style={styles.optionTextContainer}>
-          <Text style={styles.optionTitle}>Scan from Image</Text>
-          <Text style={styles.optionDescription}>Take a photo and detect items automatically</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.optionButton} onPress={handleScanBarcode}>
-        <View style={[styles.optionIcon, { backgroundColor: colors.status.infoBg }]}>
-          <Ionicons name="barcode" size={28} color={colors.status.info} />
-        </View>
-        <View style={styles.optionTextContainer}>
-          <Text style={styles.optionTitle}>Scan Barcode</Text>
-          <Text style={styles.optionDescription}>Scan product barcode for quick entry</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.optionButton} onPress={handleManualEntry}>
-        <View style={[styles.optionIcon, { backgroundColor: colors.accent.terracottaMuted }]}>
-          <Ionicons name="create" size={28} color={colors.accent.terracotta} />
-        </View>
-        <View style={styles.optionTextContainer}>
-          <Text style={styles.optionTitle}>Add Manually</Text>
-          <Text style={styles.optionDescription}>Enter item details yourself</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
-      </TouchableOpacity>
-    </View>
-  );
-
-  // Render scanning/loading view
-  const renderScanning = () => (
-    <View style={styles.scanningContainer}>
-      <ActivityIndicator size="large" color={colors.primary.sage} />
-      <Text style={styles.scanningText}>Detecting items...</Text>
-    </View>
-  );
-
-  // Render barcode scanner view
-  const renderBarcodeScanner = () => (
-    <View style={styles.barcodeScannerContainer}>
-      <CameraView
-        style={styles.camera}
-        facing="back"
-        barcodeScannerSettings={{
-          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93'],
-        }}
-        onBarcodeScanned={(result) => handleBarcodeScanned(result.data)}
-      >
-        {/* Scanning overlay */}
-        <View style={styles.scannerOverlay}>
-          {/* Top dark area */}
-          <View style={styles.overlayTop} />
-
-          {/* Middle row with scanning frame */}
-          <View style={styles.overlayMiddle}>
-            <View style={styles.overlaySide} />
-            <View style={styles.scanFrame}>
-              {/* Corner brackets */}
-              <View style={[styles.corner, styles.cornerTL]} />
-              <View style={[styles.corner, styles.cornerTR]} />
-              <View style={[styles.corner, styles.cornerBL]} />
-              <View style={[styles.corner, styles.cornerBR]} />
-              {/* Barcode icon in center */}
-              {!scannedBarcode && (
-                <Ionicons name="barcode-outline" size={48} color="rgba(255,255,255,0.5)" />
-              )}
-            </View>
-            <View style={styles.overlaySide} />
-          </View>
-
-          {/* Bottom dark area */}
-          <View style={styles.overlayBottom} />
-        </View>
-      </CameraView>
-
-      {/* Bottom panel */}
-      <View style={styles.barcodePanel}>
-        {!scannedBarcode ? (
-          <>
-            <Text style={styles.barcodePanelTitle}>Scanning barcode...</Text>
-            <Text style={styles.barcodePanelSubtitle}>Place barcode in frame</Text>
-          </>
-        ) : barcodeLoading ? (
-          <>
-            <ActivityIndicator size="small" color={colors.primary.sage} />
-            <Text style={styles.barcodePanelTitle}>Loading from Open Food Facts...</Text>
-            <Text style={styles.barcodePanelSubtitle}>Barcode: {scannedBarcode}</Text>
-          </>
-        ) : barcodeResult ? (
-          <>
-            <Text style={styles.barcodePanelTitle} numberOfLines={2}>
-              {barcodeResult.name}
-            </Text>
-            {barcodeResult.brand && (
-              <Text style={styles.barcodePanelBrand}>{barcodeResult.brand}</Text>
-            )}
-            <Text style={styles.barcodePanelSubtitle}>Barcode: {scannedBarcode}</Text>
-            {!barcodeResult.found_in_database && (
-              <Text style={styles.barcodePanelWarning}>Not found in database - you can edit details</Text>
-            )}
-          </>
-        ) : (
-          <>
-            <Text style={styles.barcodePanelTitle}>Barcode: {scannedBarcode}</Text>
-            <Text style={styles.barcodePanelWarning}>Could not look up product</Text>
-          </>
-        )}
-
-        {/* Action buttons */}
-        <View style={styles.barcodePanelButtons}>
-          <TouchableOpacity style={styles.barcodeCancelButton} onPress={handleBack}>
-            <Text style={styles.barcodeCancelText}>Cancel</Text>
-          </TouchableOpacity>
-
-          {scannedBarcode && !barcodeLoading && (
-            <TouchableOpacity style={styles.barcodeScanButton} onPress={scanAnotherBarcode}>
-              <Text style={styles.barcodeScanText}>Scan</Text>
-            </TouchableOpacity>
-          )}
-
-          {barcodeResult && (
-            <TouchableOpacity style={styles.barcodeUseButton} onPress={useBarcodeResult}>
-              <Text style={styles.barcodeUseText}>Use</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    </View>
-  );
-
-  // Render detected items view
-  const renderDetectedItems = () => (
-    <ScrollView style={styles.detectedContainer}>
-      <Text style={styles.detectedTitle}>Detected Items</Text>
-      <Text style={styles.detectedSubtitle}>
-        Review and confirm each item to add to inventory
-      </Text>
-
-      {detectedItems.map((item) => (
-        <View key={item.id} style={styles.detectedCard}>
-          <View style={styles.detectedHeader}>
-            <Text style={styles.detectedName}>{item.name}</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setEditingItem(item);
-                setShowEditModal(true);
-              }}
-            >
-              <Ionicons name="pencil" size={20} color={colors.text.secondary} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.detectedInfo}>
-            <Text style={styles.detectedInfoText}>
-              {item.quantity} {item.unit} • {item.category}
-            </Text>
-          </View>
-
-          {/* Prominent expiry date picker */}
-          <TouchableOpacity
-            style={[
-              styles.expiryPickerButton,
-              item.expiryDate ? styles.expiryPickerSet : styles.expiryPickerMissing,
-            ]}
-            onPress={() => {
-              setEditingItem(item);
-              setShowEditModal(true);
-            }}
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={18}
-              color={item.expiryDate ? colors.status.warning : colors.status.error}
-            />
-            <View style={styles.expiryPickerTextContainer}>
-              <Text style={[
-                styles.expiryPickerLabel,
-                !item.expiryDate && styles.expiryPickerLabelMissing,
-              ]}>
-                {item.expiryDate
-                  ? `Expires: ${item.expiryDate}`
-                  : 'No expiry date set'}
-              </Text>
-              <Text style={styles.expiryPickerHint}>Tap to change</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
-          </TouchableOpacity>
-
-          <View style={styles.detectedActions}>
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={() => skipItem(item)}
-            >
-              <Text style={styles.skipButtonText}>Skip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.confirmButton, loading && styles.buttonDisabled]}
-              onPress={() => confirmItem(item)}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.text.inverse} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark" size={20} color={colors.text.inverse} />
-                  <Text style={styles.confirmButtonText}>Confirm</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      ))}
-
-      {detectedItems.length === 0 && (
-        <View style={styles.emptyDetected}>
-          <Ionicons name="checkmark-circle" size={64} color={colors.primary.sage} />
-          <Text style={styles.emptyDetectedText}>All items processed!</Text>
-        </View>
-      )}
-
-      <TouchableOpacity style={styles.doneButton} onPress={handleDone}>
-        <Text style={styles.doneButtonText}>Done</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  // Render manual entry form
-  const renderManualForm = () => (
-    <ScrollView style={styles.manualContainer}>
-      <Text style={styles.sectionLabel}>PRODUCT NAME</Text>
-      <View style={styles.card}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter product name"
-          placeholderTextColor={colors.text.muted}
-          value={manualForm.name}
-          onChangeText={(text) => setManualForm({ ...manualForm, name: text })}
-        />
-      </View>
-
-      <Text style={styles.sectionLabel}>CATEGORY</Text>
-      <View style={styles.card}>
-        <TouchableOpacity
-          style={styles.categoryRow}
-          onPress={() => setShowCategoryPicker(!showCategoryPicker)}
-        >
-          <Text style={styles.categoryLabel}>Category</Text>
-          <View style={styles.categoryValue}>
-            <Text style={styles.categoryText}>{manualForm.category}</Text>
-            <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
-          </View>
-        </TouchableOpacity>
-
-        {showCategoryPicker && (
-          <View style={styles.categoryOptions}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryOption,
-                  manualForm.category === cat && styles.categoryOptionSelected,
-                ]}
-                onPress={() => {
-                  setManualForm({ ...manualForm, category: cat });
-                  setShowCategoryPicker(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.categoryOptionText,
-                    manualForm.category === cat && styles.categoryOptionTextSelected,
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-
-      <Text style={styles.sectionLabel}>QUANTITY</Text>
-      <View style={styles.card}>
-        <View style={styles.quantitySimpleRow}>
-          <TextInput
-            style={styles.quantityInputSimple}
-            value={String(manualForm.quantity)}
-            onChangeText={(text) => {
-              const num = parseFloat(text) || 0;
-              setManualForm({ ...manualForm, quantity: num });
-            }}
-            keyboardType="numeric"
-            selectTextOnFocus
-            returnKeyType="done"
-            onSubmitEditing={Keyboard.dismiss}
-            placeholder="Enter quantity"
-            placeholderTextColor={colors.text.muted}
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitChips}>
-          {UNITS.map((u) => (
-            <TouchableOpacity
-              key={u}
-              style={[styles.unitChip, manualForm.unit === u && styles.unitChipSelected]}
-              onPress={() => setManualForm({ ...manualForm, unit: u })}
-            >
-              <Text style={[styles.unitChipText, manualForm.unit === u && styles.unitChipTextSelected]}>
-                {u}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      <Text style={styles.sectionLabel}>EXPIRY DATE</Text>
-      <View style={styles.card}>
-        <Calendar
-          onDayPress={(day: { dateString: string }) =>
-            setManualForm({ ...manualForm, expiryDate: day.dateString })
-          }
-          markedDates={{
-            [manualForm.expiryDate]: { selected: true, selectedColor: colors.primary.sage },
-          }}
-          minDate={new Date().toISOString().split('T')[0]}
-          theme={{
-            todayTextColor: colors.primary.sage,
-            arrowColor: colors.primary.sage,
-            selectedDayBackgroundColor: colors.primary.sage,
-            textDayFontFamily: typography.fontFamily.body,
-            textMonthFontFamily: typography.fontFamily.body,
-            textDayHeaderFontFamily: typography.fontFamily.body,
-          }}
-        />
-      </View>
-
-      <TouchableOpacity
-        style={[styles.saveButton, loading && styles.buttonDisabled]}
-        onPress={saveManualEntry}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.text.inverse} />
-        ) : (
-          <Text style={styles.saveButtonText}>Add to Inventory</Text>
-        )}
-      </TouchableOpacity>
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
-  );
-
-  // Edit modal
-  const renderEditModal = () => (
-    <Modal visible={showEditModal} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <Text style={styles.modalCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Edit Item</Text>
-            <TouchableOpacity onPress={saveEditedItem}>
-              <Text style={styles.modalSave}>Save</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalBody}>
-            <Text style={styles.sectionLabel}>NAME</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editingItem?.name || ''}
-              onChangeText={(text) =>
-                setEditingItem((prev) => (prev ? { ...prev, name: text } : null))
-              }
-            />
-
-            <Text style={styles.sectionLabel}>QUANTITY</Text>
-            <TextInput
-              style={styles.quantityInputSimple}
-              value={String(editingItem?.quantity || 1)}
-              onChangeText={(text) => {
-                const num = parseFloat(text) || 0;
-                setEditingItem((prev) => (prev ? { ...prev, quantity: num } : null));
-              }}
-              keyboardType="numeric"
-              selectTextOnFocus
-              returnKeyType="done"
-              onSubmitEditing={Keyboard.dismiss}
-              placeholder="Enter quantity"
-              placeholderTextColor={colors.text.muted}
-            />
-
-            <Text style={styles.sectionLabel}>UNIT</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {UNITS.map((u) => (
-                <TouchableOpacity
-                  key={u}
-                  style={[
-                    styles.unitChip,
-                    editingItem?.unit === u && styles.unitChipSelected,
-                  ]}
-                  onPress={() =>
-                    setEditingItem((prev) => (prev ? { ...prev, unit: u } : null))
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.unitChipText,
-                      editingItem?.unit === u && styles.unitChipTextSelected,
-                    ]}
-                  >
-                    {u}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.sectionLabel}>EXPIRY DATE</Text>
-            <Calendar
-              onDayPress={(day: { dateString: string }) =>
-                setEditingItem((prev) =>
-                  prev ? { ...prev, expiryDate: day.dateString } : null
-                )
-              }
-              markedDates={{
-                [editingItem?.expiryDate || '']: { selected: true, selectedColor: colors.primary.sage },
-              }}
-              minDate={new Date().toISOString().split('T')[0]}
-              theme={{
-                todayTextColor: colors.primary.sage,
-                arrowColor: colors.primary.sage,
-                selectedDayBackgroundColor: colors.primary.sage,
-                textDayFontFamily: typography.fontFamily.body,
-                textMonthFontFamily: typography.fontFamily.body,
-                textDayHeaderFontFamily: typography.fontFamily.body,
-              }}
-            />
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-
-  // For barcode mode, render without the normal header
   if (mode === 'barcode') {
     return (
-      <View style={styles.container}>
-        {renderBarcodeScanner()}
-        {renderEditModal()}
+      <View style={{ flex: 1 }}>
+        <ScannerView
+          scannedBarcode={scannedBarcode}
+          barcodeLoading={barcodeLoading}
+          barcodeResult={barcodeResult}
+          onBarcodeScanned={handleBarcodeScanned}
+          onCancel={handleBack}
+          onScanAgain={() => {
+            setScannedBarcode(null);
+            setBarcodeResult(null);
+            lastScannedRef.current = null;
+          }}
+          onUseResult={useBarcodeResult}
+        />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <Screen safeArea={true} padding={false}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
@@ -800,42 +237,111 @@ export default function AddItemScreen() {
           {mode === 'detected' && 'Review Items'}
           {mode === 'manual' && 'Add Manually'}
         </Text>
-        <View style={styles.headerButton} />
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Content */}
-      {mode === 'options' && renderOptions()}
-      {mode === 'scanning' && renderScanning()}
-      {mode === 'detected' && renderDetectedItems()}
-      {mode === 'manual' && renderManualForm()}
+      {mode === 'options' && (
+        <View style={styles.optionsContainer}>
+          <Text style={styles.optionsSubtitle}>Choose how to add items</Text>
 
-      {/* Edit Modal */}
-      {renderEditModal()}
-    </View>
+          <TouchableOpacity style={styles.optionButton} onPress={handleScanImage}>
+            <View style={[styles.optionIcon, { backgroundColor: colors.primary.sageMuted }]}>
+              <Ionicons name="camera" size={28} color={colors.primary.sage} />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Scan from Image</Text>
+              <Text style={styles.optionDescription}>Take a photo and detect items automatically</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.optionButton} onPress={handleScanBarcode}>
+            <View style={[styles.optionIcon, { backgroundColor: colors.status.infoBg }]}>
+              <Ionicons name="barcode" size={28} color={colors.status.info} />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Scan Barcode</Text>
+              <Text style={styles.optionDescription}>Scan product barcode for quick entry</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.optionButton} onPress={() => setMode('manual')}>
+            <View style={[styles.optionIcon, { backgroundColor: colors.accent.terracottaMuted }]}>
+              <Ionicons name="create" size={28} color={colors.accent.terracotta} />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Add Manually</Text>
+              <Text style={styles.optionDescription}>Enter item details yourself</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.text.muted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {mode === 'scanning' && (
+        <View style={styles.scanningContainer}>
+          <ActivityIndicator size="large" color={colors.primary.sage} />
+          <Text style={styles.scanningText}>Detecting items...</Text>
+        </View>
+      )}
+
+      {mode === 'detected' && (
+        <>
+          <DetectedList
+            items={detectedItems}
+            loading={loading}
+            onEdit={(item) => {
+              setEditingItem(item);
+              setShowEditModal(true);
+            }}
+            onConfirm={confirmItem}
+            onSkip={(item) => {
+              setDetectedItems(prev => prev.filter(i => i.id !== item.id));
+              if (detectedItems.length === 1) router.back();
+            }}
+            onDone={handleBack}
+          />
+          <EditItemModal
+            visible={showEditModal}
+            item={editingItem}
+            onClose={() => setShowEditModal(false)}
+            onSave={() => {
+              setDetectedItems(prev => prev.map(i => i.id === editingItem!.id ? editingItem! : i));
+              setShowEditModal(false);
+            }}
+            onChange={(item) => setEditingItem(item)}
+          />
+        </>
+      )}
+
+      {mode === 'manual' && (
+        <ManualForm
+          onSave={handleManualSave}
+          loading={loading}
+          onCancel={handleBack}
+        />
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.base,
-    paddingTop: 60,
-    paddingBottom: spacing.base,
-    backgroundColor: colors.background.card,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.ui.border,
   },
   headerButton: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: radius.full,
   },
   headerTitle: {
     fontFamily: typography.fontFamily.body,
@@ -843,578 +349,57 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.semibold,
     color: colors.text.primary,
   },
-
-  // Options View
   optionsContainer: {
-    flex: 1,
-    padding: spacing.xl,
-  },
-  optionsTitle: {
-    fontFamily: typography.fontFamily.display,
-    fontSize: typography.size['3xl'],
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-    marginBottom: spacing.sm,
+    padding: spacing.base,
   },
   optionsSubtitle: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.md,
     color: colors.text.secondary,
-    marginBottom: spacing['2xl'],
+    marginBottom: spacing.xl,
+    textAlign: 'center',
   },
   optionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
     padding: spacing.base,
+    borderRadius: radius.lg,
     marginBottom: spacing.md,
-    ...shadows.base,
+    ...radius.md && {}, // Shadow if needed
   },
   optionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.md,
-    justifyContent: 'center',
+    width: 48,
+    height: 48,
+    borderRadius: radius.full,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.base,
   },
   optionTextContainer: {
     flex: 1,
-    marginLeft: spacing.base,
   },
   optionTitle: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.md,
     fontWeight: typography.weight.semibold,
     color: colors.text.primary,
+    marginBottom: 2,
   },
   optionDescription: {
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.sm,
     color: colors.text.secondary,
-    marginTop: 2,
   },
-
-  // Scanning View
   scanningContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   scanningText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    color: colors.text.secondary,
-    marginTop: spacing.base,
-  },
-
-  // Detected Items View
-  detectedContainer: {
-    flex: 1,
-    padding: spacing.base,
-  },
-  detectedTitle: {
-    fontFamily: typography.fontFamily.display,
-    fontSize: typography.size['2xl'],
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-    marginBottom: spacing.sm,
-  },
-  detectedSubtitle: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-    marginBottom: spacing.xl,
-  },
-  detectedCard: {
-    backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
-    padding: spacing.base,
-    marginBottom: spacing.md,
-    ...shadows.base,
-  },
-  detectedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  detectedName: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.primary,
-  },
-  detectedInfo: {
-    marginBottom: spacing.sm,
-  },
-  detectedInfoText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-  },
-  // Expiry picker button styles
-  expiryPickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  expiryPickerSet: {
-    backgroundColor: colors.status.warningBg,
-    borderWidth: 1,
-    borderColor: colors.status.warning,
-  },
-  expiryPickerMissing: {
-    backgroundColor: colors.status.errorBg,
-    borderWidth: 1,
-    borderColor: colors.status.error,
-  },
-  expiryPickerTextContainer: {
-    flex: 1,
-  },
-  expiryPickerLabel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.base,
-    fontWeight: typography.weight.medium,
-    color: colors.status.warning,
-  },
-  expiryPickerLabelMissing: {
-    color: colors.status.error,
-  },
-  expiryPickerHint: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.xs,
-    color: colors.text.muted,
-    marginTop: 2,
-  },
-  detectedActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  skipButton: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    borderWidth: 1.5,
-    borderColor: colors.ui.border,
-    alignItems: 'center',
-  },
-  skipButtonText: {
+    marginTop: spacing.md,
     fontFamily: typography.fontFamily.body,
     fontSize: typography.size.md,
     color: colors.text.secondary,
-    fontWeight: typography.weight.medium,
-  },
-  confirmButton: {
-    flex: 2,
-    flexDirection: 'row',
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    backgroundColor: colors.primary.sage,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  confirmButtonText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.inverse,
-    fontWeight: typography.weight.semibold,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  emptyDetected: {
-    alignItems: 'center',
-    paddingVertical: spacing['3xl'],
-  },
-  emptyDetectedText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    color: colors.primary.sage,
-    marginTop: spacing.base,
-  },
-  doneButton: {
-    backgroundColor: colors.primary.sage,
-    paddingVertical: spacing.base,
-    borderRadius: radius.base,
-    alignItems: 'center',
-    marginTop: spacing.xl,
-    ...shadows.sm,
-  },
-  doneButtonText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    color: colors.text.inverse,
-    fontWeight: typography.weight.semibold,
-  },
-
-  // Manual Form
-  manualContainer: {
-    flex: 1,
-    padding: spacing.base,
-  },
-  sectionLabel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.xs,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.tertiary,
-    letterSpacing: typography.letterSpacing.wider,
-    marginBottom: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  card: {
-    backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    ...shadows.sm,
-  },
-  input: {
-    padding: spacing.base,
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.primary,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.base,
-  },
-  categoryLabel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.primary,
-  },
-  categoryValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  categoryText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.primary.sage,
-    fontWeight: typography.weight.medium,
-  },
-  categoryOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: spacing.md,
-    paddingTop: 0,
-    gap: spacing.sm,
-  },
-  categoryOption: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.background.secondary,
-  },
-  categoryOptionSelected: {
-    backgroundColor: colors.primary.sage,
-  },
-  categoryOptionText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-    fontWeight: typography.weight.medium,
-  },
-  categoryOptionTextSelected: {
-    color: colors.text.inverse,
-  },
-  quantityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.base,
-    paddingBottom: spacing.sm,
-  },
-  quantityLabel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.primary,
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  quantityButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.base,
-    backgroundColor: colors.background.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quantityValue: {
-    fontFamily: typography.fontFamily.display,
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-    minWidth: 48,
-    textAlign: 'center',
-  },
-  quantityInput: {
-    fontFamily: typography.fontFamily.display,
-    fontSize: typography.size.xl,
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-    minWidth: 80,
-    textAlign: 'center',
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  quantitySimpleRow: {
-    padding: spacing.base,
-    paddingBottom: spacing.sm,
-  },
-  quantityInputSimple: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    color: colors.text.primary,
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.base,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.base,
-    textAlign: 'center',
-  },
-  unitChips: {
-    paddingHorizontal: spacing.base,
-    paddingBottom: spacing.base,
-  },
-  unitChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.background.secondary,
-    marginRight: spacing.sm,
-  },
-  unitChipSelected: {
-    backgroundColor: colors.primary.sage,
-  },
-  unitChipText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-    fontWeight: typography.weight.medium,
-  },
-  unitChipTextSelected: {
-    color: colors.text.inverse,
-  },
-  saveButton: {
-    backgroundColor: colors.primary.sage,
-    paddingVertical: spacing.base,
-    borderRadius: radius.base,
-    alignItems: 'center',
-    marginTop: spacing.xl,
-    ...shadows.sm,
-  },
-  saveButtonText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    color: colors.text.inverse,
-    fontWeight: typography.weight.semibold,
-  },
-
-  // Edit Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.ui.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background.card,
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.base,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.ui.border,
-  },
-  modalCancel: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.secondary,
-  },
-  modalTitle: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.primary,
-  },
-  modalSave: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.primary.sage,
-    fontWeight: typography.weight.semibold,
-  },
-  modalBody: {
-    padding: spacing.base,
-  },
-  modalInput: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: radius.base,
-    padding: spacing.md,
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    color: colors.text.primary,
-  },
-
-  // Barcode Scanner Styles
-  barcodeScannerContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  camera: {
-    flex: 1,
-  },
-  scannerOverlay: {
-    flex: 1,
-  },
-  overlayTop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  overlayMiddle: {
-    flexDirection: 'row',
-  },
-  overlaySide: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  scanFrame: {
-    width: SCREEN_WIDTH * 0.75,
-    height: SCREEN_WIDTH * 0.45,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.5)',
-    borderRadius: radius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  corner: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderColor: '#fff',
-  },
-  cornerTL: {
-    top: -2,
-    left: -2,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: radius.lg,
-  },
-  cornerTR: {
-    top: -2,
-    right: -2,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: radius.lg,
-  },
-  cornerBL: {
-    bottom: -2,
-    left: -2,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: radius.lg,
-  },
-  cornerBR: {
-    bottom: -2,
-    right: -2,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderBottomRightRadius: radius.lg,
-  },
-  overlayBottom: {
-    flex: 1.5,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  barcodePanel: {
-    backgroundColor: colors.text.primary,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing['3xl'],
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    alignItems: 'center',
-  },
-  barcodePanelTitle: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.lg,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.inverse,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  barcodePanelBrand: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.muted,
-    marginBottom: spacing.xs,
-  },
-  barcodePanelSubtitle: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.text.muted,
-    marginBottom: spacing.sm,
-  },
-  barcodePanelWarning: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.sm,
-    color: colors.status.warning,
-    marginBottom: spacing.sm,
-  },
-  barcodePanelButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.base,
-  },
-  barcodeCancelButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    backgroundColor: colors.status.error,
-  },
-  barcodeCancelText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.inverse,
-  },
-  barcodeScanButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    backgroundColor: colors.primary.sage,
-  },
-  barcodeScanText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.inverse,
-  },
-  barcodeUseButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    backgroundColor: colors.status.info,
-  },
-  barcodeUseText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.text.inverse,
   },
 });

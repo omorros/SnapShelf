@@ -17,6 +17,9 @@ import { api } from '../../services/api';
 import { useAuth } from '../../services/auth';
 import { User } from '../../types';
 import { colors, typography, spacing, radius, shadows } from '../../theme';
+import { Screen } from '../../components/ui/Screen';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button'; // Assuming Button is available
 
 const STORAGE_LOCATIONS = ['Fridge', 'Pantry', 'Freezer', 'Cupboard'] as const;
 const STORAGE_LOCATION_KEY = 'default_storage_location';
@@ -114,7 +117,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <Screen safeArea={true} padding={false} style={{ backgroundColor: colors.background.primary }}>
       {/* Header */}
       <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
         <Text style={styles.headerTitle}>Settings</Text>
@@ -124,7 +127,7 @@ export default function SettingsScreen() {
         {/* User Profile Card */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
-          <View style={styles.profileCard}>
+          <Card style={styles.profileCard}>
             <View style={styles.profileAvatar}>
               <Ionicons name="person" size={32} color={colors.primary.sage} />
             </View>
@@ -134,7 +137,7 @@ export default function SettingsScreen() {
                 Member since {user?.created_at ? formatDate(user.created_at) : 'Unknown'}
               </Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* Preferences Section */}
@@ -142,7 +145,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Preferences</Text>
 
           {/* Default Storage Location */}
-          <View style={styles.preferenceCard}>
+          <Card style={styles.preferenceCard}>
             <View style={styles.preferenceHeader}>
               <Ionicons name="location-outline" size={20} color={colors.text.secondary} />
               <Text style={styles.preferenceLabel}>Default Storage Location</Text>
@@ -171,10 +174,10 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </Card>
 
           {/* Notifications */}
-          <View style={styles.preferenceCard}>
+          <Card style={styles.preferenceCard}>
             <View style={styles.preferenceRow}>
               <View style={styles.preferenceLeft}>
                 <Ionicons name="notifications-outline" size={20} color={colors.text.secondary} />
@@ -196,13 +199,13 @@ export default function SettingsScreen() {
             <Text style={styles.preferenceDescription}>
               Get notified when items are about to expire
             </Text>
-          </View>
+          </Card>
         </View>
 
         {/* App Info Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
-          <View style={styles.infoCard}>
+          <Card style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>App Version</Text>
               <Text style={styles.infoValue}>1.0.0</Text>
@@ -211,26 +214,25 @@ export default function SettingsScreen() {
               <Text style={styles.infoLabel}>Build</Text>
               <Text style={styles.infoValue}>2026.01</Text>
             </View>
-          </View>
+          </Card>
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color={colors.status.error} />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
+        <Button
+          label="Logout"
+          variant="danger"
+          onPress={handleLogout}
+          icon="log-out-outline"
+          style={{ marginTop: spacing.md }}
+        />
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
   centered: {
     flex: 1,
     justifyContent: 'center',
@@ -246,8 +248,8 @@ const styles = StyleSheet.create({
 
   // Header
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 60,
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     backgroundColor: colors.background.primary,
   },
@@ -284,10 +286,7 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
     padding: spacing.base,
-    ...shadows.sm,
   },
   profileAvatar: {
     width: 56,
@@ -316,11 +315,8 @@ const styles = StyleSheet.create({
 
   // Preference Card
   preferenceCard: {
-    backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
     padding: spacing.base,
     marginBottom: spacing.md,
-    ...shadows.sm,
   },
   preferenceHeader: {
     flexDirection: 'row',
@@ -381,6 +377,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.background.secondary,
+    marginBottom: spacing.xs,
   },
   locationChipActive: {
     backgroundColor: colors.primary.sage,
@@ -397,10 +394,7 @@ const styles = StyleSheet.create({
 
   // Info Card
   infoCard: {
-    backgroundColor: colors.background.card,
-    borderRadius: radius.lg,
     padding: spacing.base,
-    ...shadows.sm,
   },
   infoRow: {
     flexDirection: 'row',
@@ -423,23 +417,5 @@ const styles = StyleSheet.create({
     fontSize: typography.size.base,
     fontWeight: typography.weight.medium,
     color: colors.text.primary,
-  },
-
-  // Logout Button
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.status.errorBg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.base,
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  logoutText: {
-    fontFamily: typography.fontFamily.body,
-    fontSize: typography.size.md,
-    fontWeight: typography.weight.semibold,
-    color: colors.status.error,
   },
 });
