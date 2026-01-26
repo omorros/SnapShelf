@@ -134,18 +134,20 @@ export function Button({
                             name={icon}
                             size={size === 'sm' ? 16 : 20}
                             color={getVariantTextStyle().color}
-                            style={{ marginRight: spacing.sm }}
+                            style={label ? { marginRight: spacing.sm } : undefined}
                         />
                     )}
-                    <Text
-                        style={[
-                            styles.label,
-                            { fontSize: size === 'sm' ? typography.size.sm : typography.size.md },
-                            getVariantTextStyle(),
-                        ]}
-                    >
-                        {label}
-                    </Text>
+                    {label ? (
+                        <Text
+                            style={[
+                                styles.label,
+                                { fontSize: size === 'sm' ? typography.size.sm : typography.size.md },
+                                getVariantTextStyle(),
+                            ]}
+                        >
+                            {label}
+                        </Text>
+                    ) : null}
                 </>
             )}
         </TouchableOpacity>
