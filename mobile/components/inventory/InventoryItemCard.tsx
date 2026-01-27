@@ -3,15 +3,17 @@ import { View, Text, StyleSheet, Pressable, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, shadows, typography, getCategoryColor, getCategoryIcon, getExpiryColor } from '../../theme';
 import { InventoryItem } from '../../types';
+import { MergedInventoryItem } from '../../utils/inventoryMerge';
 
-// We can use MergedInventoryItem here, but we'll define a compatible interface
+// Export for backward compatibility
 export interface InventoryDisplayItem extends InventoryItem {
     mergedCount?: number;
+    mergedIds?: string[];
 }
 
 interface InventoryItemCardProps {
-    item: InventoryDisplayItem;
-    onPress: (item: InventoryDisplayItem) => void;
+    item: MergedInventoryItem;
+    onPress: (item: MergedInventoryItem) => void;
     style?: ViewStyle;
 }
 

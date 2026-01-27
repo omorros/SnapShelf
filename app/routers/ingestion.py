@@ -198,15 +198,24 @@ async def ingest_image(
             "confidence_score": item.confidence_score,
         }
 
+        # Add quantity and unit if available
+        if item.quantity is not None:
+            draft_data["quantity"] = item.quantity
+        if item.unit is not None:
+            draft_data["unit"] = item.unit
+
         # Add expiry prediction if available
         if item.predicted_expiry:
             draft_data["expiration_date"] = item.predicted_expiry
 
-        # Add reasoning as notes
+        # Build notes with detection info
+        notes_parts = ["[Image detection - GPT-4o]"]
         if item.reasoning:
-            draft_data["notes"] = f"[Image detection - GPT-4o]\n[{item.reasoning}]"
-        else:
-            draft_data["notes"] = "[Image detection - GPT-4o]"
+            notes_parts.append(f"[{item.reasoning}]")
+        if item.quantity_confidence is not None:
+            confidence_pct = int(item.quantity_confidence * 100)
+            notes_parts.append(f"[Quantity confidence: {confidence_pct}%]")
+        draft_data["notes"] = "\n".join(notes_parts)
 
         # Save to database
         db_draft = DraftItem(

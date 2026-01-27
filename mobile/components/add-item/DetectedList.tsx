@@ -22,7 +22,8 @@ interface DetectedListProps {
     onEdit: (item: DetectedItem) => void;
     onConfirm: (item: DetectedItem) => void;
     onSkip: (item: DetectedItem) => void;
-    onDone: () => void;
+    onAddAll: () => void;
+    onDiscard: () => void;
     loading: boolean;
 }
 
@@ -31,7 +32,8 @@ export function DetectedList({
     onEdit,
     onConfirm,
     onSkip,
-    onDone,
+    onAddAll,
+    onDiscard,
     loading,
 }: DetectedListProps) {
     return (
@@ -120,12 +122,37 @@ export function DetectedList({
                 </View>
             )}
 
-            <Button
-                label="Done"
-                variant="secondary"
-                onPress={onDone}
-                style={styles.doneButton}
-            />
+            {/* Bottom action buttons */}
+            {items.length > 0 && (
+                <View style={styles.bottomActions}>
+                    <Button
+                        label="Add All"
+                        variant="primary"
+                        icon="checkmark-done"
+                        onPress={onAddAll}
+                        loading={loading}
+                        disabled={loading}
+                        style={styles.addAllButton}
+                    />
+                    <Button
+                        label="Discard All"
+                        variant="ghost"
+                        icon="trash-outline"
+                        onPress={onDiscard}
+                        disabled={loading}
+                        style={styles.discardButton}
+                    />
+                </View>
+            )}
+
+            {items.length === 0 && (
+                <Button
+                    label="Done"
+                    variant="primary"
+                    onPress={onDiscard}
+                    style={styles.doneButton}
+                />
+            )}
 
             <View style={{ height: 40 }} />
         </ScrollView>
@@ -237,5 +264,15 @@ const styles = StyleSheet.create({
     },
     doneButton: {
         marginTop: spacing.xl,
+    },
+    bottomActions: {
+        marginTop: spacing.xl,
+        gap: spacing.md,
+    },
+    addAllButton: {
+        // Primary button - uses theme defaults
+    },
+    discardButton: {
+        // Ghost button - subtle discard option
     },
 });

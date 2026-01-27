@@ -25,6 +25,22 @@ class DetectedItemWithPrediction:
     predicted_expiry: Optional[str]  # ISO date string
     confidence_score: float
     reasoning: Optional[str]
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    quantity_confidence: Optional[float] = None
+
+
+# Valid units that match the mobile app
+VALID_UNITS = {"Pieces", "Grams", "Kilograms", "Milliliters", "Liters"}
+
+# Normalization map for common variations
+UNIT_NORMALIZATION_MAP = {
+    "pieces": "Pieces", "piece": "Pieces", "pcs": "Pieces", "pc": "Pieces",
+    "grams": "Grams", "gram": "Grams", "g": "Grams",
+    "kilograms": "Kilograms", "kilogram": "Kilograms", "kg": "Kilograms",
+    "milliliters": "Milliliters", "milliliter": "Milliliters", "ml": "Milliliters",
+    "liters": "Liters", "liter": "Liters", "l": "Liters",
+}
 
 
 @dataclass
@@ -95,13 +111,19 @@ class ImageIngestionService:
                 storage_location=storage_location
             )
 
+                # Validate and normalize unit
+            normalized_unit = self._normalize_unit(item.unit)
+
             processed_items.append(
                 DetectedItemWithPrediction(
                     name=item.name,
                     category=normalized_category,
                     predicted_expiry=prediction.expiry_date.isoformat(),
                     confidence_score=GPT4O_DEFAULT_CONFIDENCE,
-                    reasoning=prediction.reasoning
+                    reasoning=prediction.reasoning,
+                    quantity=item.quantity,
+                    unit=normalized_unit,
+                    quantity_confidence=item.quantity_confidence
                 )
             )
 
@@ -143,6 +165,23 @@ class ImageIngestionService:
         }
 
         return category_map.get(category_lower, category_lower)
+
+    def _normalize_unit(self, unit: Optional[str]) -> Optional[str]:
+        """
+        Normalize and validate unit from GPT-4o.
+
+        Returns the normalized unit if valid, None otherwise.
+        """
+        if not unit:
+            return None
+
+        # Check if already valid
+        if unit in VALID_UNITS:
+            return unit
+
+        # Try normalization map
+        unit_lower = unit.lower().strip()
+        return UNIT_NORMALIZATION_MAP.get(unit_lower, None)
 
 
 # Singleton instance
