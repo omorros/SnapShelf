@@ -7,34 +7,29 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
-  Modal,
   ScrollView,
   Animated,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
   TextInput,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../services/api';
 import { InventoryItem, CATEGORIES } from '../../types';
-import { colors, typography, spacing, radius, shadows, getCategoryColor, getCategoryIcon } from '../../theme';
+import { colors, typography, spacing, radius } from '../../theme';
 
 // Shared Components
 import { Screen } from '../../components/ui/Screen';
 import { Button } from '../../components/ui/Button';
+import { BottomSheet } from '../../components/ui/BottomSheet';
 
 // Domain Components
-import { InventoryItemCard, InventoryDisplayItem } from '../../components/inventory/InventoryItemCard';
+import { InventoryItemCard } from '../../components/inventory/InventoryItemCard';
 import { InventoryHeader } from '../../components/inventory/InventoryHeader';
 import { InventoryFilters } from '../../components/inventory/InventoryFilters';
 
 // Utils
 import { mergeInventoryItems, MergedInventoryItem } from '../../utils/inventoryMerge';
-import { convertToBaseUnit, getBaseUnit, formatQuantityWithUnit, getUnitGroup, normalizeUnit, UNIT_GROUPS } from '../../utils/unitConversion';
 
 // We'll keep the consumption modal logic and edit modal logic here for now, or extract further if needed.
 // For brevity in this refactor, I will inline the modals but use the new style tokens.
@@ -50,7 +45,6 @@ export default function InventoryScreen() {
 
   // Animations
   const headerOpacity = useRef(new Animated.Value(0)).current;
-  const modalTranslateY = useRef(new Animated.Value(300)).current;
 
   // Modals & Selection
   const [selectedItem, setSelectedItem] = useState<MergedInventoryItem | null>(null);
@@ -86,19 +80,6 @@ export default function InventoryScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
-
-  // Modal Animation Trigger
-  useEffect(() => {
-    if (showActionModal || showEditModal || showConsumeModal) {
-      modalTranslateY.setValue(300);
-      Animated.spring(modalTranslateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        damping: 20,
-        stiffness: 90,
-      }).start();
-    }
-  }, [showActionModal, showEditModal, showConsumeModal]);
 
   // Sync Display Items
   useEffect(() => {
@@ -373,177 +354,148 @@ export default function InventoryScreen() {
         />
       </View>
 
-      {/* Action Modal */}
-      <Modal visible={showActionModal} transparent animationType="fade" onRequestClose={() => setShowActionModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowActionModal(false)} activeOpacity={1}>
-          <Animated.View style={[styles.actionSheet, { transform: [{ translateY: modalTranslateY }] }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.modalHandle} />
-            {selectedItem && (
-              <>
-                <Text style={styles.actionTitle}>{selectedItem.name}</Text>
-                <Text style={styles.actionSubtitle}>{selectedItem.quantity} {selectedItem.unit}</Text>
+      {/* Action Bottom Sheet */}
+      <BottomSheet visible={showActionModal} onClose={() => setShowActionModal(false)}>
+        {selectedItem && (
+          <>
+            <Text style={styles.actionTitle}>{selectedItem.name}</Text>
+            <Text style={styles.actionSubtitle}>{selectedItem.quantity} {selectedItem.unit}</Text>
 
-                <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-                  <Button label="Edit Item" variant="secondary" onPress={handleEditPress} icon="pencil" />
-                  <Button label="Mark as Consumed" variant="primary" onPress={handleConsumePress} icon="checkmark-circle" />
-                  <Button label="Delete" variant="danger" onPress={handleDelete} icon="trash" />
-                  <Button label="Cancel" variant="ghost" onPress={() => setShowActionModal(false)} />
-                </View>
-              </>
-            )}
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal visible={showEditModal} transparent animationType="fade" onRequestClose={() => setShowEditModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.modalOverlay}>
-              <Animated.View style={[styles.actionSheet, { maxHeight: '80%', transform: [{ translateY: modalTranslateY }] }]}>
-                <View style={styles.modalHandle} />
-                <Text style={styles.actionTitle}>Edit Item</Text>
-
-                <ScrollView style={{ marginTop: spacing.lg }}>
-                  <Text style={styles.inputLabel}>Name</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={editName}
-                    onChangeText={setEditName}
-                    placeholder="Item name"
-                  />
-
-                  <Text style={styles.inputLabel}>Category</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-                    {CATEGORIES.map(cat => (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[styles.chip, editCategory.toLowerCase() === cat.toLowerCase() && styles.chipSelected]}
-                        onPress={() => setEditCategory(cat)}
-                      >
-                        <Text style={[styles.chipText, editCategory.toLowerCase() === cat.toLowerCase() && styles.chipTextSelected]}>
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  <Text style={styles.inputLabel}>Quantity</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={editQuantity}
-                    onChangeText={setEditQuantity}
-                    keyboardType="numeric"
-                    placeholder="Quantity"
-                  />
-
-                  <Text style={styles.inputLabel}>Unit</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-                    {['Pieces', 'Grams', 'Kilograms', 'Milliliters', 'Liters'].map(unit => (
-                      <TouchableOpacity
-                        key={unit}
-                        style={[styles.chip, editUnit.toLowerCase() === unit.toLowerCase() && styles.chipSelected]}
-                        onPress={() => setEditUnit(unit)}
-                      >
-                        <Text style={[styles.chipText, editUnit.toLowerCase() === unit.toLowerCase() && styles.chipTextSelected]}>
-                          {unit}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-
-                  <Text style={styles.inputLabel}>Expiry Date</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={editExpiryDate}
-                    onChangeText={setEditExpiryDate}
-                    placeholder="YYYY-MM-DD"
-                  />
-                </ScrollView>
-
-                <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-                  <Button label="Save Changes" variant="primary" onPress={handleEditSave} loading={actionLoading} />
-                  <Button label="Cancel" variant="ghost" onPress={() => setShowEditModal(false)} />
-                </View>
-              </Animated.View>
+            <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+              <Button label="Edit Item" variant="secondary" onPress={handleEditPress} icon="pencil" />
+              <Button label="Mark as Consumed" variant="primary" onPress={handleConsumePress} icon="checkmark-circle" />
+              <Button label="Delete" variant="danger" onPress={handleDelete} icon="trash" />
             </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </Modal>
+          </>
+        )}
+      </BottomSheet>
 
-      {/* Consume Modal */}
-      <Modal visible={showConsumeModal} transparent animationType="fade" onRequestClose={() => setShowConsumeModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowConsumeModal(false)} activeOpacity={1}>
-              <Animated.View
-                style={[styles.actionSheet, { transform: [{ translateY: modalTranslateY }] }]}
-                onStartShouldSetResponder={() => true}
+      {/* Edit Bottom Sheet */}
+      <BottomSheet visible={showEditModal} onClose={() => setShowEditModal(false)}>
+        <Text style={styles.actionTitle}>Edit Item</Text>
+
+        <ScrollView style={{ marginTop: spacing.lg, maxHeight: 400 }}>
+          <Text style={styles.inputLabel}>Name</Text>
+          <TextInput
+            style={styles.input}
+            value={editName}
+            onChangeText={setEditName}
+            placeholder="Item name"
+          />
+
+          <Text style={styles.inputLabel}>Category</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
+            {CATEGORIES.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.chip, editCategory.toLowerCase() === cat.toLowerCase() && styles.chipSelected]}
+                onPress={() => setEditCategory(cat)}
               >
-                <View style={styles.modalHandle} />
-                {selectedItem && (
-                  <>
-                    <Text style={styles.actionTitle}>Mark as Consumed</Text>
-                    <Text style={styles.actionSubtitle}>{selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available</Text>
+                <Text style={[styles.chipText, editCategory.toLowerCase() === cat.toLowerCase() && styles.chipTextSelected]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-                    {/* Quick percentage buttons */}
-                    <View style={styles.quickButtons}>
-                      {[25, 50, 75, 100].map(percent => (
-                        <TouchableOpacity
-                          key={percent}
-                          style={[
-                            styles.quickButton,
-                            consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonActive
-                          ]}
-                          onPress={() => setConsumeQuantity(Math.round(selectedItem.quantity * percent / 100 * 10) / 10)}
-                        >
-                          <Text style={[
-                            styles.quickButtonText,
-                            consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonTextActive
-                          ]}>
-                            {percent === 100 ? 'All' : `${percent}%`}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+          <Text style={styles.inputLabel}>Quantity</Text>
+          <TextInput
+            style={styles.input}
+            value={editQuantity}
+            onChangeText={setEditQuantity}
+            keyboardType="numeric"
+            placeholder="Quantity"
+          />
 
-                    {/* Direct quantity input */}
-                    <View style={styles.consumeInputRow}>
-                      <TextInput
-                        style={styles.consumeInput}
-                        value={String(consumeQuantity)}
-                        onChangeText={(text) => {
-                          const num = parseFloat(text) || 0;
-                          setConsumeQuantity(Math.min(selectedItem.quantity, Math.max(0, num)));
-                        }}
-                        keyboardType="numeric"
-                        selectTextOnFocus
-                      />
-                      <Text style={styles.consumeInputUnit}>{selectedItem.unit}</Text>
-                    </View>
+          <Text style={styles.inputLabel}>Unit</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
+            {['Pieces', 'Grams', 'Kilograms', 'Milliliters', 'Liters'].map(unit => (
+              <TouchableOpacity
+                key={unit}
+                style={[styles.chip, editUnit.toLowerCase() === unit.toLowerCase() && styles.chipSelected]}
+                onPress={() => setEditUnit(unit)}
+              >
+                <Text style={[styles.chipText, editUnit.toLowerCase() === unit.toLowerCase() && styles.chipTextSelected]}>
+                  {unit}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-                    <Text style={styles.remainingText}>
-                      {selectedItem.quantity - consumeQuantity <= 0
-                        ? 'This will remove the item completely'
-                        : `${(selectedItem.quantity - consumeQuantity).toFixed(1)} ${selectedItem.unit} remaining`}
-                    </Text>
+          <Text style={styles.inputLabel}>Expiry Date</Text>
+          <TextInput
+            style={styles.input}
+            value={editExpiryDate}
+            onChangeText={setEditExpiryDate}
+            placeholder="YYYY-MM-DD"
+          />
+        </ScrollView>
 
-                    <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-                      <Button
-                        label={selectedItem.quantity - consumeQuantity <= 0 ? 'Remove Item' : 'Confirm'}
-                        variant="primary"
-                        onPress={handleConsumeSave}
-                        loading={actionLoading}
-                      />
-                      <Button label="Cancel" variant="ghost" onPress={() => setShowConsumeModal(false)} />
-                    </View>
-                  </>
-                )}
-              </Animated.View>
-            </TouchableOpacity>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </Modal>
+        <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+          <Button label="Save Changes" variant="primary" onPress={handleEditSave} loading={actionLoading} />
+        </View>
+      </BottomSheet>
+
+      {/* Consume Bottom Sheet */}
+      <BottomSheet visible={showConsumeModal} onClose={() => setShowConsumeModal(false)}>
+        {selectedItem && (
+          <>
+            <Text style={styles.actionTitle}>Mark as Consumed</Text>
+            <Text style={styles.actionSubtitle}>{selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available</Text>
+
+            {/* Quick percentage buttons */}
+            <View style={styles.quickButtons}>
+              {[25, 50, 75, 100].map(percent => (
+                <TouchableOpacity
+                  key={percent}
+                  style={[
+                    styles.quickButton,
+                    consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonActive
+                  ]}
+                  onPress={() => setConsumeQuantity(Math.round(selectedItem.quantity * percent / 100 * 10) / 10)}
+                >
+                  <Text style={[
+                    styles.quickButtonText,
+                    consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonTextActive
+                  ]}>
+                    {percent === 100 ? 'All' : `${percent}%`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Direct quantity input */}
+            <View style={styles.consumeInputRow}>
+              <TextInput
+                style={styles.consumeInput}
+                value={String(consumeQuantity)}
+                onChangeText={(text) => {
+                  const num = parseFloat(text) || 0;
+                  setConsumeQuantity(Math.min(selectedItem.quantity, Math.max(0, num)));
+                }}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
+              <Text style={styles.consumeInputUnit}>{selectedItem.unit}</Text>
+            </View>
+
+            <Text style={styles.remainingText}>
+              {selectedItem.quantity - consumeQuantity <= 0
+                ? 'This will remove the item completely'
+                : `${(selectedItem.quantity - consumeQuantity).toFixed(1)} ${selectedItem.unit} remaining`}
+            </Text>
+
+            <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+              <Button
+                label={selectedItem.quantity - consumeQuantity <= 0 ? 'Remove Item' : 'Confirm'}
+                variant="primary"
+                onPress={handleConsumeSave}
+                loading={actionLoading}
+              />
+            </View>
+          </>
+        )}
+      </BottomSheet>
 
     </Screen>
   );
@@ -599,24 +551,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: spacing.xl,
     right: spacing.base,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: colors.ui.overlay,
-    justifyContent: 'flex-end',
-  },
-  actionSheet: {
-    backgroundColor: colors.background.card,
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    padding: spacing.xl,
-    paddingBottom: spacing['4xl'],
-  },
-  modalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: colors.ui.border,
-    alignSelf: 'center',
-    marginBottom: spacing.lg,
   },
   actionTitle: {
     fontSize: typography.size.xl,
