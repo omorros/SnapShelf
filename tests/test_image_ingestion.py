@@ -17,7 +17,9 @@ from app.services.ingestion.image_ingestion import (
     ImageIngestionService,
     ImageIngestionResult,
     DetectedItemWithPrediction,
-    GPT4O_DEFAULT_CONFIDENCE
+    GPT4O_DEFAULT_CONFIDENCE,
+    VALID_UNITS,
+    UNIT_NORMALIZATION_MAP
 )
 
 
@@ -61,7 +63,7 @@ class TestGPT4oVisionClient:
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"items": [{"name": "milk", "category": "dairy"}, {"name": "chicken breast", "category": "meat"}]}'
+        mock_response.choices[0].message.content = '{"items": [{"name": "milk", "category": "Dairy", "quantity": 1, "unit": "Liters", "quantity_confidence": 0.9}, {"name": "chicken breast", "category": "Meat", "quantity": 500, "unit": "Grams", "quantity_confidence": 0.7}]}'
         mock_client.chat.completions.create.return_value = mock_response
 
         client = GPT4oVisionClient()
@@ -71,9 +73,36 @@ class TestGPT4oVisionClient:
 
         assert len(result) == 2
         assert result[0].name == "milk"
-        assert result[0].category == "dairy"
+        assert result[0].category == "Dairy"
+        assert result[0].quantity == 1
+        assert result[0].unit == "Liters"
+        assert result[0].quantity_confidence == 0.9
         assert result[1].name == "chicken breast"
-        assert result[1].category == "meat"
+        assert result[1].category == "Meat"
+        assert result[1].quantity == 500
+        assert result[1].unit == "Grams"
+
+    @patch("app.services.ingestion.gpt4o_vision.OpenAI")
+    def test_detect_food_items_with_null_quantity(self, mock_openai_class):
+        """Items with null quantity should be handled correctly."""
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"items": [{"name": "unknown item", "category": "Other", "quantity": null, "unit": null, "quantity_confidence": null}]}'
+        mock_client.chat.completions.create.return_value = mock_response
+
+        client = GPT4oVisionClient()
+        client._client = mock_client
+
+        result = client.detect_food_items(b"\xff\xd8\xff")
+
+        assert len(result) == 1
+        assert result[0].name == "unknown item"
+        assert result[0].quantity is None
+        assert result[0].unit is None
+        assert result[0].quantity_confidence is None
 
     @patch("app.services.ingestion.gpt4o_vision.OpenAI")
     def test_detect_food_items_empty_response(self, mock_openai_class):
@@ -143,14 +172,45 @@ class TestImageIngestionService:
         """Unknown categories should pass through."""
         assert self.service._normalize_category("exotic_food") == "exotic_food"
 
+    def test_normalize_unit_valid_units(self):
+        """Valid units should pass through unchanged."""
+        for unit in VALID_UNITS:
+            assert self.service._normalize_unit(unit) == unit
+
+    def test_normalize_unit_lowercase_variations(self):
+        """Lowercase variations should be normalized."""
+        assert self.service._normalize_unit("pieces") == "Pieces"
+        assert self.service._normalize_unit("grams") == "Grams"
+        assert self.service._normalize_unit("kilograms") == "Kilograms"
+        assert self.service._normalize_unit("milliliters") == "Milliliters"
+        assert self.service._normalize_unit("liters") == "Liters"
+
+    def test_normalize_unit_abbreviations(self):
+        """Common abbreviations should be normalized."""
+        assert self.service._normalize_unit("g") == "Grams"
+        assert self.service._normalize_unit("kg") == "Kilograms"
+        assert self.service._normalize_unit("ml") == "Milliliters"
+        assert self.service._normalize_unit("l") == "Liters"
+        assert self.service._normalize_unit("pcs") == "Pieces"
+
+    def test_normalize_unit_none_input(self):
+        """None input should return None."""
+        assert self.service._normalize_unit(None) is None
+
+    def test_normalize_unit_invalid_returns_none(self):
+        """Invalid units should return None."""
+        assert self.service._normalize_unit("cups") is None
+        assert self.service._normalize_unit("ounces") is None
+        assert self.service._normalize_unit("unknown") is None
+
     @patch("app.services.ingestion.image_ingestion.gpt4o_vision_client")
     @patch("app.services.ingestion.image_ingestion.expiry_prediction_service")
     def test_ingest_from_image_success(self, mock_expiry_service, mock_vision_client):
-        """Successful ingestion should return processed items."""
-        # Mock GPT-4o detection
+        """Successful ingestion should return processed items with quantity."""
+        # Mock GPT-4o detection with quantity
         mock_vision_client.detect_food_items.return_value = [
-            DetectedFoodItem(name="whole milk", category="dairy"),
-            DetectedFoodItem(name="chicken breast", category="meat"),
+            DetectedFoodItem(name="whole milk", category="dairy", quantity=1, unit="Liters", quantity_confidence=0.9),
+            DetectedFoodItem(name="chicken breast", category="meat", quantity=500, unit="Grams", quantity_confidence=0.7),
         ]
 
         # Mock expiry prediction
@@ -169,7 +229,12 @@ class TestImageIngestionService:
         assert result.detected_items[0].name == "whole milk"
         assert result.detected_items[0].category == "dairy"
         assert result.detected_items[0].confidence_score == GPT4O_DEFAULT_CONFIDENCE
+        assert result.detected_items[0].quantity == 1
+        assert result.detected_items[0].unit == "Liters"
+        assert result.detected_items[0].quantity_confidence == 0.9
         assert result.detected_items[1].name == "chicken breast"
+        assert result.detected_items[1].quantity == 500
+        assert result.detected_items[1].unit == "Grams"
 
     @patch("app.services.ingestion.image_ingestion.gpt4o_vision_client")
     def test_ingest_from_image_no_items_detected(self, mock_vision_client):
@@ -228,11 +293,11 @@ class TestDetectionPrompt:
     """Tests for the GPT-4o detection prompt."""
 
     def test_prompt_includes_required_categories(self):
-        """Prompt should include all required food categories."""
+        """Prompt should include all GPT-4o food categories."""
+        # These are the categories GPT-4o is asked to use
         required_categories = [
-            "dairy", "meat", "poultry", "fish", "seafood",
-            "vegetables", "fruits", "bread", "bakery", "eggs",
-            "condiments", "beverages", "snacks", "frozen", "canned"
+            "dairy", "meat", "fish", "vegetables", "fruits",
+            "grains", "snacks", "beverages", "frozen", "condiments", "other"
         ]
 
         for category in required_categories:
@@ -246,3 +311,14 @@ class TestDetectionPrompt:
     def test_prompt_emphasizes_clarity(self):
         """Prompt should emphasize clear identification."""
         assert "clearly identify" in DETECTION_PROMPT.lower()
+
+    def test_prompt_includes_quantity_fields(self):
+        """Prompt should request quantity estimation."""
+        assert "quantity" in DETECTION_PROMPT.lower()
+        assert "unit" in DETECTION_PROMPT.lower()
+        assert "quantity_confidence" in DETECTION_PROMPT.lower()
+
+    def test_prompt_includes_valid_units(self):
+        """Prompt should list all valid unit options."""
+        for unit in VALID_UNITS:
+            assert unit in DETECTION_PROMPT
