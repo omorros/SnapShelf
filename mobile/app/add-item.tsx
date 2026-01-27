@@ -167,6 +167,68 @@ export default function AddItemScreen() {
     }
   };
 
+  const confirmAllItems = async () => {
+    // Check if any items are missing expiry dates
+    const missingExpiry = detectedItems.filter(item => !item.expiryDate);
+    if (missingExpiry.length > 0) {
+      Alert.alert(
+        'Missing Expiry Dates',
+        `${missingExpiry.length} item(s) are missing expiry dates. Please set them before adding all.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Add all items in sequence
+      for (const item of detectedItems) {
+        await api.addToInventory({
+          name: item.name,
+          category: item.category.toLowerCase(),
+          quantity: item.quantity,
+          unit: item.unit.toLowerCase(),
+          storage_location: 'fridge',
+          expiry_date: item.expiryDate,
+        });
+      }
+
+      Alert.alert(
+        'Success',
+        `${detectedItems.length} item(s) added to inventory!`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+      setDetectedItems([]);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const discardAllItems = () => {
+    if (detectedItems.length === 0) {
+      router.back();
+      return;
+    }
+
+    Alert.alert(
+      'Discard All Items?',
+      `Are you sure you want to discard ${detectedItems.length} item(s)?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setDetectedItems([]);
+            router.back();
+          }
+        },
+      ]
+    );
+  };
+
   const handleManualSave = async (data: any) => {
     if (!data.name.trim()) return Alert.alert('Error', 'Enter product name');
     if (!data.expiryDate) return Alert.alert('Error', 'Select expiry date');
@@ -300,7 +362,8 @@ export default function AddItemScreen() {
               setDetectedItems(prev => prev.filter(i => i.id !== item.id));
               if (detectedItems.length === 1) router.back();
             }}
-            onDone={handleBack}
+            onAddAll={confirmAllItems}
+            onDiscard={discardAllItems}
           />
           <EditItemModal
             visible={showEditModal}
