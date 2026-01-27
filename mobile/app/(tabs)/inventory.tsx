@@ -50,6 +50,7 @@ export default function InventoryScreen() {
 
   // Animations
   const headerOpacity = useRef(new Animated.Value(0)).current;
+  const modalTranslateY = useRef(new Animated.Value(300)).current;
 
   // Modals & Selection
   const [selectedItem, setSelectedItem] = useState<MergedInventoryItem | null>(null);
@@ -85,6 +86,19 @@ export default function InventoryScreen() {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Modal Animation Trigger
+  useEffect(() => {
+    if (showActionModal || showEditModal || showConsumeModal) {
+      modalTranslateY.setValue(300);
+      Animated.spring(modalTranslateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 20,
+        stiffness: 90,
+      }).start();
+    }
+  }, [showActionModal, showEditModal, showConsumeModal]);
 
   // Sync Display Items
   useEffect(() => {
@@ -360,9 +374,9 @@ export default function InventoryScreen() {
       </View>
 
       {/* Action Modal */}
-      <Modal visible={showActionModal} transparent animationType="none" onRequestClose={() => setShowActionModal(false)}>
+      <Modal visible={showActionModal} transparent animationType="fade" onRequestClose={() => setShowActionModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowActionModal(false)} activeOpacity={1}>
-          <TouchableOpacity style={styles.actionSheet} activeOpacity={1} onPress={e => e.stopPropagation()}>
+          <Animated.View style={[styles.actionSheet, { transform: [{ translateY: modalTranslateY }] }]} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHandle} />
             {selectedItem && (
               <>
@@ -377,16 +391,16 @@ export default function InventoryScreen() {
                 </View>
               </>
             )}
-          </TouchableOpacity>
+          </Animated.View>
         </TouchableOpacity>
       </Modal>
 
       {/* Edit Modal */}
-      <Modal visible={showEditModal} transparent animationType="none" onRequestClose={() => setShowEditModal(false)}>
+      <Modal visible={showEditModal} transparent animationType="fade" onRequestClose={() => setShowEditModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalOverlay}>
-              <View style={[styles.actionSheet, { maxHeight: '80%' }]}>
+              <Animated.View style={[styles.actionSheet, { maxHeight: '80%', transform: [{ translateY: modalTranslateY }] }]}>
                 <View style={styles.modalHandle} />
                 <Text style={styles.actionTitle}>Edit Item</Text>
 
@@ -451,77 +465,84 @@ export default function InventoryScreen() {
                   <Button label="Save Changes" variant="primary" onPress={handleEditSave} loading={actionLoading} />
                   <Button label="Cancel" variant="ghost" onPress={() => setShowEditModal(false)} />
                 </View>
-              </View>
+              </Animated.View>
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </Modal>
 
       {/* Consume Modal */}
-      <Modal visible={showConsumeModal} transparent animationType="none" onRequestClose={() => setShowConsumeModal(false)}>
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowConsumeModal(false)} activeOpacity={1}>
-          <TouchableOpacity style={styles.actionSheet} activeOpacity={1} onPress={e => e.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            {selectedItem && (
-              <>
-                <Text style={styles.actionTitle}>Mark as Consumed</Text>
-                <Text style={styles.actionSubtitle}>{selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available</Text>
+      <Modal visible={showConsumeModal} transparent animationType="fade" onRequestClose={() => setShowConsumeModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowConsumeModal(false)} activeOpacity={1}>
+              <Animated.View
+                style={[styles.actionSheet, { transform: [{ translateY: modalTranslateY }] }]}
+                onStartShouldSetResponder={() => true}
+              >
+                <View style={styles.modalHandle} />
+                {selectedItem && (
+                  <>
+                    <Text style={styles.actionTitle}>Mark as Consumed</Text>
+                    <Text style={styles.actionSubtitle}>{selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available</Text>
 
-                {/* Quick percentage buttons */}
-                <View style={styles.quickButtons}>
-                  {[25, 50, 75, 100].map(percent => (
-                    <TouchableOpacity
-                      key={percent}
-                      style={[
-                        styles.quickButton,
-                        consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonActive
-                      ]}
-                      onPress={() => setConsumeQuantity(Math.round(selectedItem.quantity * percent / 100 * 10) / 10)}
-                    >
-                      <Text style={[
-                        styles.quickButtonText,
-                        consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonTextActive
-                      ]}>
-                        {percent === 100 ? 'All' : `${percent}%`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                    {/* Quick percentage buttons */}
+                    <View style={styles.quickButtons}>
+                      {[25, 50, 75, 100].map(percent => (
+                        <TouchableOpacity
+                          key={percent}
+                          style={[
+                            styles.quickButton,
+                            consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonActive
+                          ]}
+                          onPress={() => setConsumeQuantity(Math.round(selectedItem.quantity * percent / 100 * 10) / 10)}
+                        >
+                          <Text style={[
+                            styles.quickButtonText,
+                            consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonTextActive
+                          ]}>
+                            {percent === 100 ? 'All' : `${percent}%`}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
 
-                {/* Direct quantity input */}
-                <View style={styles.consumeInputRow}>
-                  <TextInput
-                    style={styles.consumeInput}
-                    value={String(consumeQuantity)}
-                    onChangeText={(text) => {
-                      const num = parseFloat(text) || 0;
-                      setConsumeQuantity(Math.min(selectedItem.quantity, Math.max(0, num)));
-                    }}
-                    keyboardType="numeric"
-                    selectTextOnFocus
-                  />
-                  <Text style={styles.consumeInputUnit}>{selectedItem.unit}</Text>
-                </View>
+                    {/* Direct quantity input */}
+                    <View style={styles.consumeInputRow}>
+                      <TextInput
+                        style={styles.consumeInput}
+                        value={String(consumeQuantity)}
+                        onChangeText={(text) => {
+                          const num = parseFloat(text) || 0;
+                          setConsumeQuantity(Math.min(selectedItem.quantity, Math.max(0, num)));
+                        }}
+                        keyboardType="numeric"
+                        selectTextOnFocus
+                      />
+                      <Text style={styles.consumeInputUnit}>{selectedItem.unit}</Text>
+                    </View>
 
-                <Text style={styles.remainingText}>
-                  {selectedItem.quantity - consumeQuantity <= 0
-                    ? 'This will remove the item completely'
-                    : `${(selectedItem.quantity - consumeQuantity).toFixed(1)} ${selectedItem.unit} remaining`}
-                </Text>
+                    <Text style={styles.remainingText}>
+                      {selectedItem.quantity - consumeQuantity <= 0
+                        ? 'This will remove the item completely'
+                        : `${(selectedItem.quantity - consumeQuantity).toFixed(1)} ${selectedItem.unit} remaining`}
+                    </Text>
 
-                <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-                  <Button
-                    label={selectedItem.quantity - consumeQuantity <= 0 ? 'Remove Item' : 'Confirm'}
-                    variant="primary"
-                    onPress={handleConsumeSave}
-                    loading={actionLoading}
-                  />
-                  <Button label="Cancel" variant="ghost" onPress={() => setShowConsumeModal(false)} />
-                </View>
-              </>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
+                    <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+                      <Button
+                        label={selectedItem.quantity - consumeQuantity <= 0 ? 'Remove Item' : 'Confirm'}
+                        variant="primary"
+                        onPress={handleConsumeSave}
+                        loading={actionLoading}
+                      />
+                      <Button label="Cancel" variant="ghost" onPress={() => setShowConsumeModal(false)} />
+                    </View>
+                  </>
+                )}
+              </Animated.View>
+            </TouchableOpacity>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
     </Screen>
