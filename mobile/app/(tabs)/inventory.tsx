@@ -360,7 +360,7 @@ export default function InventoryScreen() {
       </View>
 
       {/* Action Modal */}
-      <Modal visible={showActionModal} transparent animationType="fade" onRequestClose={() => setShowActionModal(false)}>
+      <Modal visible={showActionModal} transparent animationType="none" onRequestClose={() => setShowActionModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowActionModal(false)} activeOpacity={1}>
           <TouchableOpacity style={styles.actionSheet} activeOpacity={1} onPress={e => e.stopPropagation()}>
             <View style={styles.modalHandle} />
@@ -382,7 +382,7 @@ export default function InventoryScreen() {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal visible={showEditModal} transparent animationType="slide" onRequestClose={() => setShowEditModal(false)}>
+      <Modal visible={showEditModal} transparent animationType="none" onRequestClose={() => setShowEditModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalOverlay}>
@@ -458,34 +458,49 @@ export default function InventoryScreen() {
       </Modal>
 
       {/* Consume Modal */}
-      <Modal visible={showConsumeModal} transparent animationType="slide" onRequestClose={() => setShowConsumeModal(false)}>
+      <Modal visible={showConsumeModal} transparent animationType="none" onRequestClose={() => setShowConsumeModal(false)}>
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowConsumeModal(false)} activeOpacity={1}>
           <TouchableOpacity style={styles.actionSheet} activeOpacity={1} onPress={e => e.stopPropagation()}>
             <View style={styles.modalHandle} />
             {selectedItem && (
               <>
                 <Text style={styles.actionTitle}>Mark as Consumed</Text>
-                <Text style={styles.actionSubtitle}>{selectedItem.name}</Text>
+                <Text style={styles.actionSubtitle}>{selectedItem.name} • {selectedItem.quantity} {selectedItem.unit} available</Text>
 
-                <View style={styles.consumeControls}>
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => setConsumeQuantity(Math.max(0.5, consumeQuantity - 0.5))}
-                  >
-                    <Ionicons name="remove" size={24} color={colors.text.primary} />
-                  </TouchableOpacity>
+                {/* Quick percentage buttons */}
+                <View style={styles.quickButtons}>
+                  {[25, 50, 75, 100].map(percent => (
+                    <TouchableOpacity
+                      key={percent}
+                      style={[
+                        styles.quickButton,
+                        consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonActive
+                      ]}
+                      onPress={() => setConsumeQuantity(Math.round(selectedItem.quantity * percent / 100 * 10) / 10)}
+                    >
+                      <Text style={[
+                        styles.quickButtonText,
+                        consumeQuantity === (selectedItem.quantity * percent / 100) && styles.quickButtonTextActive
+                      ]}>
+                        {percent === 100 ? 'All' : `${percent}%`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-                  <View style={styles.quantityDisplay}>
-                    <Text style={styles.quantityValue}>{consumeQuantity}</Text>
-                    <Text style={styles.quantityUnit}>{selectedItem.unit}</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => setConsumeQuantity(Math.min(selectedItem.quantity, consumeQuantity + 0.5))}
-                  >
-                    <Ionicons name="add" size={24} color={colors.text.primary} />
-                  </TouchableOpacity>
+                {/* Direct quantity input */}
+                <View style={styles.consumeInputRow}>
+                  <TextInput
+                    style={styles.consumeInput}
+                    value={String(consumeQuantity)}
+                    onChangeText={(text) => {
+                      const num = parseFloat(text) || 0;
+                      setConsumeQuantity(Math.min(selectedItem.quantity, Math.max(0, num)));
+                    }}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.consumeInputUnit}>{selectedItem.unit}</Text>
                 </View>
 
                 <Text style={styles.remainingText}>
@@ -630,38 +645,60 @@ const styles = StyleSheet.create({
   chipTextSelected: {
     color: colors.text.inverse,
   },
-  consumeControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: spacing.xl,
-    gap: spacing.lg,
-  },
-  quantityButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.background.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quantityDisplay: {
-    alignItems: 'center',
-    minWidth: 80,
-  },
-  quantityValue: {
-    fontSize: typography.size['3xl'],
-    fontWeight: typography.weight.bold,
-    color: colors.text.primary,
-  },
-  quantityUnit: {
-    fontSize: typography.size.sm,
-    color: colors.text.secondary,
-  },
   remainingText: {
     fontSize: typography.size.sm,
     color: colors.text.secondary,
     textAlign: 'center',
     marginBottom: spacing.md,
+  },
+  quickButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  quickButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.background.secondary,
+    minWidth: 56,
+    alignItems: 'center',
+  },
+  quickButtonActive: {
+    backgroundColor: colors.primary.sage,
+  },
+  quickButtonText: {
+    fontFamily: typography.fontFamily.body,
+    fontSize: typography.size.sm,
+    fontWeight: typography.weight.semibold,
+    color: colors.text.primary,
+  },
+  quickButtonTextActive: {
+    color: colors.text.inverse,
+  },
+  consumeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.md,
+    gap: spacing.sm,
+  },
+  consumeInput: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: radius.base,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    fontSize: typography.size['2xl'],
+    fontWeight: typography.weight.bold,
+    color: colors.text.primary,
+    textAlign: 'center',
+    minWidth: 100,
+  },
+  consumeInputUnit: {
+    fontSize: typography.size.lg,
+    color: colors.text.secondary,
+    fontWeight: typography.weight.medium,
   },
 });
