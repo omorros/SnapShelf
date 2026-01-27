@@ -8,7 +8,7 @@ import {
     TextStyle,
     TouchableOpacityProps,
 } from 'react-native';
-import { colors, opacity, spacing, radius, layout, typography } from '../../theme';
+import { colors, spacing, radius, layout, typography } from '../../theme';
 import { Ionicons } from '@expo/vector-icons';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
