@@ -234,9 +234,11 @@ python main.py
   1.  Pipeline A — LLM-only (baseline)
   2.  Pipeline B — Class-agnostic YOLO + LLM
   3.  Pipeline C — YOLO-World + LLM
-  4.  Exit
+  4.  Warmup models (for timing fairness)
+  5.  Validate environment
+  6.  Exit
 
-Select option (1-4):
+Select option (1-6):
 ```
 
 ### Command-Line Interface
@@ -252,6 +254,10 @@ python main.py yolo <image_path>
 
 # Pipeline C: YOLO-World + LLM
 python main.py yolo-world <image_path>
+
+# Utility commands
+python main.py --validate    # Check environment and display config
+python main.py --warmup      # Pre-load all models for timing fairness
 ```
 
 **Example:**
@@ -261,6 +267,31 @@ python main.py yolo-world ./test_images/refrigerator.jpg
 ```
 
 Output is JSON to stdout, suitable for piping to evaluation scripts.
+
+### Recommended Experiment Workflow
+
+For valid timing measurements, always warm up models before running experiments:
+
+```bash
+# 1. Validate environment (check API key, display frozen config)
+python main.py --validate
+
+# 2. Pre-load all models (excludes loading time from measurements)
+python main.py --warmup
+
+# 3. Run experiments (models already in memory)
+python main.py llm image.jpg
+python main.py yolo image.jpg
+python main.py yolo-world image.jpg
+```
+
+### Warmup Explanation
+
+Without warmup, the **first run** of each pipeline includes model loading time:
+- First run: ~5000ms (loading YOLOv8/YOLO-World from disk)
+- Subsequent runs: ~500ms (model already in memory)
+
+The `--warmup` command pre-loads all models so timing measurements reflect only inference time, ensuring fair comparison across pipelines.
 
 ---
 
@@ -280,7 +311,13 @@ All pipelines produce identical JSON structure for standardised comparison:
     "image": "refrigerator.jpg",
     "runtime_ms": 2847.32,
     "fallback_used": false,
-    "detections_count": 5
+    "detections_count": 5,
+    "timing_breakdown": {
+      "detection_ms": 342.15,
+      "llm_total_ms": 2505.17,
+      "llm_avg_ms": 501.03,
+      "llm_calls": 5
+    }
   }
 }
 ```
@@ -301,6 +338,18 @@ All pipelines produce identical JSON structure for standardised comparison:
 | `runtime_ms` | float | Total execution time (milliseconds) |
 | `fallback_used` | boolean | Always `false` (fallback disabled) |
 | `detections_count` | integer | YOLO detections used (Pipelines B/C only) |
+| `timing_breakdown` | object | Per-component timing for analysis |
+
+### Timing Breakdown Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `image_load_ms` | float | Image loading time (Pipeline A only) |
+| `detection_ms` | float | YOLO inference time (Pipelines B/C) |
+| `llm_inference_ms` | float | Single LLM call time (Pipeline A) |
+| `llm_total_ms` | float | Total LLM time across all crops (Pipelines B/C) |
+| `llm_avg_ms` | float | Average LLM time per crop (Pipelines B/C) |
+| `llm_calls` | integer | Number of LLM API calls made |
 
 ---
 
@@ -330,16 +379,58 @@ Located in `clients/yolo_detector_agnostic.py` and `clients/yolo_detector.py`:
 
 ### YOLO-World Prompts (Pipeline C Only)
 
-Located in `clients/yolo_detector.py`:
+Located in `config.py`:
 
 ```python
-DETECTION_PROMPTS = [
-    "food",
-    "fruit",
-    "vegetable",
-    "packaged food",
-]
+yolo_world_prompts = ("food", "fruit", "vegetable", "packaged food")
 ```
+
+---
+
+## Reproducibility
+
+### Frozen Configuration
+
+All experiment parameters are centralised in `config.py` as a frozen dataclass:
+
+```python
+@dataclass(frozen=True)
+class ExperimentConfig:
+    llm_model: str = "gpt-4o-mini"
+    llm_temperature: float = 0.0
+    yolo_conf_threshold: float = 0.15
+    yolo_max_detections: int = 8
+    random_seed: int = 42
+    # ... etc
+```
+
+### Random Seed Control
+
+Reproducibility seeds are set automatically on experiment initialisation:
+- Python `random` module
+- NumPy random state
+- PyTorch (if available)
+
+### Structured Logging
+
+Every experiment run generates detailed logs in `logs/experiment_{timestamp}.jsonl`:
+
+```json
+{"timestamp": "2024-01-31T15:30:45", "pipeline": "yolo", "step": "detection", "details": {"bbox": {...}, "confidence": 0.87}}
+{"timestamp": "2024-01-31T15:30:46", "pipeline": "yolo", "step": "llm_call", "duration_ms": 523.4, "raw_response": "..."}
+```
+
+Logs include:
+- Every YOLO detection (bbox, confidence, filter pass/fail)
+- Every LLM call (raw response, parsed result, timing)
+- Pipeline completion summaries
+
+### Singleton Pattern
+
+All ML clients use singleton pattern to ensure:
+1. Models are loaded once (not per-pipeline-call)
+2. Timing measurements exclude initialisation
+3. Memory efficiency across multiple runs
 
 ---
 
@@ -348,13 +439,14 @@ DETECTION_PROMPTS = [
 ```
 SnapShelf-console/
 ├── main.py                           # CLI and interactive entry point
-├── requirements.txt                  # Python dependencies
+├── config.py                         # Frozen experiment configuration & logging
+├── requirements.txt                  # Python dependencies (pinned versions)
 ├── .env.example                      # Environment template
 ├── .gitignore
 │
 ├── clients/
 │   ├── __init__.py
-│   ├── llm_client.py                 # OpenAI Vision client (frozen)
+│   ├── llm_client.py                 # OpenAI Vision client (singleton, frozen)
 │   ├── yolo_detector.py              # YOLO-World detector (Pipeline C)
 │   └── yolo_detector_agnostic.py     # Class-agnostic detector (Pipeline B)
 │
@@ -365,6 +457,9 @@ SnapShelf-console/
 │   ├── yolo_agnostic_pipeline.py     # Pipeline B implementation
 │   └── yolo_world_pipeline.py        # Pipeline C implementation
 │
+├── logs/                             # Experiment logs (auto-generated, not tracked)
+│   └── experiment_{timestamp}.jsonl  # Structured logs for post-hoc analysis
+│
 └── test_images/                      # Sample images (not tracked)
 ```
 
@@ -372,15 +467,20 @@ SnapShelf-console/
 
 ## Requirements
 
-### Runtime Dependencies
+### Runtime Dependencies (Pinned for Reproducibility)
 
 ```
-openai>=1.0.0
-ultralytics>=8.0.0
-Pillow>=10.0.0
-python-dotenv>=1.0.0
-rich>=13.0.0
+ultralytics==8.3.57
+git+https://github.com/ultralytics/CLIP.git@88ade288431a46233f1556d1e141901b3ef0a36b
+openai==1.59.9
+pillow==11.1.0
+rich==13.9.4
+python-dotenv==1.0.1
+numpy==2.2.2
+structlog==24.4.0
 ```
+
+**Note:** All dependencies are pinned to exact versions to ensure reproducibility across environments and time.
 
 ### System Requirements
 
