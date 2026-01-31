@@ -1,91 +1,97 @@
 """
-YOLO detector module for object detection and region cropping.
-Uses Ultralytics YOLOv8 to produce bounding boxes for LLM labeling.
+YOLO-World detector module for open-vocabulary object detection.
+Uses YOLO-World for region proposals to be classified by LLM.
 """
 
 import os
 os.environ['TORCH_FORCE_WEIGHTS_ONLY_LOAD'] = '0'
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from PIL import Image
 from io import BytesIO
-from ultralytics import YOLO
+from ultralytics import YOLOWorld
 
 
 # =============================================================================
-# YOLO CONFIGURATION PARAMETERS
-# Adjust these values to tune detection behavior
+# YOLO-WORLD CONFIGURATION
+# Optimized for maximum recall in food detection scenarios
 # =============================================================================
 
-# Confidence threshold for detections (0.0 - 1.0)
-# Lower = more detections (higher recall), Higher = fewer detections (higher precision)
-CONF_THRESHOLD = 0.25
+# Confidence threshold (lower = more detections, higher recall)
+# 0.15 is aggressive to catch all potential food regions
+CONF_THRESHOLD = 0.15
 
 # IoU threshold for Non-Maximum Suppression
-# Controls how much overlap is allowed before boxes are merged
-# Using YOLO's default NMS when set; explicitly pass to override
 IOU_THRESHOLD = 0.45
 
-# Maximum number of detections to return
-# Limits results to top K highest-confidence detections
-MAX_DETECTIONS = 15
+# Maximum detections per image
+MAX_DETECTIONS = 20
 
-# Crop padding as percentage of bounding box dimensions (0.0 - 1.0)
-# Adds extra margin around detected objects when cropping
+# Crop padding as percentage (captures context around objects)
 CROP_PADDING_PCT = 0.10
+
+# Open-vocabulary prompts for food detection
+# Generic prompts only (no specific food categories for fair comparison)
+DETECTION_PROMPTS = [
+    "food",
+    "fruit",
+    "vegetable",
+    "packaged food",
+    "object",
+    "item",
+]
 
 # =============================================================================
 
 
 class YOLODetector:
     """
-    YOLO-based object detector for generating region proposals.
+    YOLO-World open-vocabulary detector for region proposals.
 
-    Uses YOLOv8 to detect objects and crop regions for LLM labeling.
-    The detector returns cropped images with bounding box metadata.
-
-    Attributes:
-        model: Loaded YOLO model instance
-        conf_threshold: Confidence threshold for detections
-        iou_threshold: IoU threshold for NMS
-        max_detections: Maximum detections to return
-        crop_padding: Padding percentage for crops
+    Uses text prompts to detect any object type without fine-tuning.
+    Returns cropped regions for LLM classification.
     """
 
     def __init__(
         self,
-        model_path: str = "yolov8s.pt",
+        model_path: str = "yolov8s-worldv2.pt",
+        prompts: Optional[List[str]] = None,
         conf_threshold: float = CONF_THRESHOLD,
         iou_threshold: float = IOU_THRESHOLD,
         max_detections: int = MAX_DETECTIONS,
         crop_padding: float = CROP_PADDING_PCT
     ):
         """
-        Initialize YOLO detector with model and parameters.
+        Initialize YOLO-World detector.
 
         Args:
-            model_path: Path to YOLO model weights (.pt file)
-            conf_threshold: Confidence threshold (default 0.25)
-            iou_threshold: IoU threshold for NMS (default 0.45)
-            max_detections: Max detections to return (default 15)
+            model_path: YOLO-World model weights (auto-downloads if missing)
+            prompts: Custom detection prompts (defaults to DETECTION_PROMPTS)
+            conf_threshold: Detection confidence threshold (default 0.15)
+            iou_threshold: NMS IoU threshold (default 0.45)
+            max_detections: Max detections to return (default 20)
             crop_padding: Padding percentage for crops (default 0.10)
         """
-        # Try to find model: current dir -> repo root -> let Ultralytics auto-download
+        # Resolve model path
         if Path(model_path).exists():
-            # Found in current directory or absolute path
             resolved_path = model_path
         else:
-            # Try repo root
             repo_root = Path(__file__).parent.parent
             repo_path = repo_root / model_path
             if repo_path.exists():
                 resolved_path = str(repo_path)
             else:
-                # Not found locally - keep original name for Ultralytics auto-download
+                # Let Ultralytics auto-download
                 resolved_path = model_path
 
-        self.model = YOLO(resolved_path)
+        # Load YOLO-World model
+        self.model = YOLOWorld(resolved_path)
+        
+        # Set detection prompts (open-vocabulary magic)
+        self.prompts = prompts or DETECTION_PROMPTS
+        self.model.set_classes(self.prompts)
+
         self.conf_threshold = conf_threshold
         self.iou_threshold = iou_threshold
         self.max_detections = max_detections
@@ -95,22 +101,21 @@ class YOLODetector:
         """
         Detect objects and return cropped regions.
 
-        Pipeline: Load image -> Run YOLO -> Crop detections -> Return crops
-
         Args:
             image_path: Path to the image file
 
         Returns:
             List of dicts containing:
-                - bbox: {x, y, width, height} coordinates
+                - bbox: {x, y, width, height}
                 - image_bytes: PNG bytes of cropped region
-                - confidence: Detection confidence score
+                - confidence: Detection confidence
+                - prompt_match: Which prompt triggered detection
         """
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
 
-        # Run YOLO detection
+        # Run YOLO-World detection
         results = self.model(
             image,
             conf=self.conf_threshold,
@@ -126,6 +131,11 @@ class YOLODetector:
                 # Get bounding box coordinates
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
+                cls_id = int(box.cls[0])
+                
+                # Get which prompt matched
+                prompt_match = self.prompts[cls_id] if cls_id < len(self.prompts) else "unknown"
+                
                 width, height = x2 - x1, y2 - y1
 
                 # Add padding to capture full object
@@ -151,7 +161,8 @@ class YOLODetector:
                         "height": y2 - y1
                     },
                     "image_bytes": buffer.getvalue(),
-                    "confidence": conf
+                    "confidence": conf,
+                    "prompt_match": prompt_match
                 })
 
         return detections
@@ -160,12 +171,6 @@ class YOLODetector:
         """
         Return full image as a single detection region.
         Used when YOLO finds no detections and fallback is enabled.
-
-        Args:
-            image_path: Path to the image file
-
-        Returns:
-            List with single detection covering full image
         """
         image = Image.open(image_path)
         if image.mode != "RGB":
@@ -182,5 +187,6 @@ class YOLODetector:
                 "height": image.height
             },
             "image_bytes": buffer.getvalue(),
-            "confidence": 1.0
+            "confidence": 1.0,
+            "prompt_match": "fallback"
         }]
