@@ -77,7 +77,7 @@ The baseline pipeline submits the complete image directly to the LLM with a stru
                      └─────────────┘      └─────────────┘
 ```
 
-Pipeline B employs standard YOLOv8 (trained on COCO) for region proposal, deliberately ignoring class labels to isolate structural contribution. Geometric filters remove noise (minimum area threshold, aspect ratio constraints) without semantic reasoning.
+Pipeline B employs standard YOLOv8 (trained on COCO) for region proposal, deliberately ignoring class labels to isolate structural contribution. Geometric filters remove noise without semantic reasoning.
 
 **Key Characteristics:**
 - Class labels discarded (all detections treated as generic "object")
@@ -87,18 +87,18 @@ Pipeline B employs standard YOLOv8 (trained on COCO) for region proposal, delibe
 ### Pipeline C: Semantic Pre-Processing (YOLO-World)
 
 ```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│  Input      │ ───► │  YOLO-World │ ───► │  Cropped    │
-│  Image      │      │  (Prompted) │      │  Regions    │
-└─────────────┘      └─────────────┘      └──────┬──────┘
-                                                  │
-                     ┌─────────────┐      ┌─────────────┐
-                     │  Aggregated │ ◄─── │  GPT-4o     │ ◄───┘
-                     │  Output     │      │  per Crop   │  (each region)
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│  Input      │ ───► │  YOLO-World │ ───► │  Geometric  │ ───► │  Cropped    │
+│  Image      │      │  (Prompted) │      │  Filtering  │      │  Regions    │
+└─────────────┘      └─────────────┘      └─────────────┘      └──────┬──────┘
+                                                                      │
+                     ┌─────────────┐      ┌─────────────┐             │
+                     │  Aggregated │ ◄─── │  GPT-4o     │ ◄───────────┘
+                     │  Output     │      │  per Crop   │       (each region)
                      └─────────────┘      └─────────────┘
 ```
 
-Pipeline C uses YOLO-World's open-vocabulary capabilities with fixed food-specific prompts, providing semantic guidance during region proposal.
+Pipeline C uses YOLO-World's open-vocabulary capabilities with fixed food-specific prompts, providing semantic guidance during region proposal. Identical geometric filtering is applied for fair comparison with Pipeline B.
 
 **Fixed Prompt Set:**
 ```python
@@ -109,6 +109,7 @@ Pipeline C uses YOLO-World's open-vocabulary capabilities with fixed food-specif
 - Semantic prompts guide detection toward food-relevant regions
 - Prompts are fixed (identical across all images, no dynamic adjustment)
 - No specific food names to avoid biasing LLM classification
+- Geometric filtering identical to Pipeline B (fair comparison)
 
 ---
 
@@ -157,6 +158,7 @@ To ensure experimental validity, the following parameters are held constant:
 | IoU Threshold | `0.45` | Identical NMS behaviour |
 | Max Detections | `8` | Controlled region count |
 | Crop Padding | `10%` | Identical context capture |
+| Geometric Filters | Identical | Same area/aspect constraints on B and C |
 | Output Schema | Frozen | Standardised comparison |
 
 ### Fallback Policy
@@ -315,9 +317,10 @@ Located in `clients/yolo_detector.py` and `clients/yolo_detector_agnostic.py`:
 | `MAX_DETECTIONS` | `8` | Maximum regions per image |
 | `CROP_PADDING_PCT` | `0.10` | Padding around detected regions (10%) |
 
-### Geometric Filters (Pipeline B Only)
+### Geometric Filters (Pipelines B and C)
 
-Located in `clients/yolo_detector_agnostic.py`:
+Applied identically to both YOLO pipelines for fair comparison.
+Located in `clients/yolo_detector_agnostic.py` and `clients/yolo_detector.py`:
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|

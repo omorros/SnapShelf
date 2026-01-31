@@ -43,6 +43,17 @@ DETECTION_PROMPTS = [
 ]
 
 # =============================================================================
+# GEOMETRIC FILTERS (identical to Pipeline B for fair comparison)
+# =============================================================================
+
+# Minimum bounding box area as percentage of image area
+MIN_BBOX_AREA_PCT = 0.02  # 2% of image area
+
+# Aspect ratio constraints (width/height)
+MIN_ASPECT_RATIO = 0.2   # Not too tall/narrow
+MAX_ASPECT_RATIO = 5.0   # Not too wide/flat
+
+# =============================================================================
 
 
 class YOLODetector:
@@ -51,6 +62,7 @@ class YOLODetector:
 
     Uses text prompts to detect any object type without fine-tuning.
     Returns cropped regions for LLM classification.
+    Applies geometric filtering identical to Pipeline B for fair comparison.
     """
 
     def __init__(
@@ -60,7 +72,10 @@ class YOLODetector:
         conf_threshold: float = CONF_THRESHOLD,
         iou_threshold: float = IOU_THRESHOLD,
         max_detections: int = MAX_DETECTIONS,
-        crop_padding: float = CROP_PADDING_PCT
+        crop_padding: float = CROP_PADDING_PCT,
+        min_bbox_area_pct: float = MIN_BBOX_AREA_PCT,
+        min_aspect_ratio: float = MIN_ASPECT_RATIO,
+        max_aspect_ratio: float = MAX_ASPECT_RATIO
     ):
         """
         Initialize YOLO-World detector.
@@ -70,8 +85,11 @@ class YOLODetector:
             prompts: Custom detection prompts (defaults to DETECTION_PROMPTS)
             conf_threshold: Detection confidence threshold (default 0.15)
             iou_threshold: NMS IoU threshold (default 0.45)
-            max_detections: Max detections to return (default 20)
+            max_detections: Max detections to return (default 8)
             crop_padding: Padding percentage for crops (default 0.10)
+            min_bbox_area_pct: Minimum bbox area as % of image (default 0.02)
+            min_aspect_ratio: Minimum width/height ratio (default 0.2)
+            max_aspect_ratio: Maximum width/height ratio (default 5.0)
         """
         # Resolve model path
         if Path(model_path).exists():
@@ -87,7 +105,7 @@ class YOLODetector:
 
         # Load YOLO-World model
         self.model = YOLOWorld(resolved_path)
-        
+
         # Set detection prompts (open-vocabulary magic)
         self.prompts = prompts or DETECTION_PROMPTS
         self.model.set_classes(self.prompts)
@@ -97,9 +115,46 @@ class YOLODetector:
         self.max_detections = max_detections
         self.crop_padding = crop_padding
 
+        # Geometric filter parameters (identical to Pipeline B for fairness)
+        self.min_bbox_area_pct = min_bbox_area_pct
+        self.min_aspect_ratio = min_aspect_ratio
+        self.max_aspect_ratio = max_aspect_ratio
+
+    def _passes_geometric_filter(
+        self, width: int, height: int, image_area: int
+    ) -> bool:
+        """
+        Check if detection passes geometric filters.
+        Identical to Pipeline B for fair comparison.
+
+        Args:
+            width: Bounding box width
+            height: Bounding box height
+            image_area: Total image area (width * height)
+
+        Returns:
+            True if detection passes all geometric constraints
+        """
+        # Filter 1: Minimum area (removes tiny/noise detections)
+        bbox_area = width * height
+        area_pct = bbox_area / image_area
+        if area_pct < self.min_bbox_area_pct:
+            return False
+
+        # Filter 2: Aspect ratio (removes elongated/edge detections)
+        if height == 0:
+            return False
+        aspect_ratio = width / height
+        if aspect_ratio < self.min_aspect_ratio or aspect_ratio > self.max_aspect_ratio:
+            return False
+
+        return True
+
     def detect(self, image_path: str) -> List[dict]:
         """
         Detect objects and return cropped regions.
+
+        Applies geometric filtering identical to Pipeline B for fair comparison.
 
         Args:
             image_path: Path to the image file
@@ -114,6 +169,8 @@ class YOLODetector:
         image = Image.open(image_path)
         if image.mode != "RGB":
             image = image.convert("RGB")
+
+        image_area = image.width * image.height
 
         # Run YOLO-World detection
         results = self.model(
@@ -132,11 +189,15 @@ class YOLODetector:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
-                
+
                 # Get which prompt matched
                 prompt_match = self.prompts[cls_id] if cls_id < len(self.prompts) else "unknown"
-                
+
                 width, height = x2 - x1, y2 - y1
+
+                # Apply geometric filter (identical to Pipeline B for fairness)
+                if not self._passes_geometric_filter(width, height, image_area):
+                    continue
 
                 # Add padding to capture full object
                 pad_x = int(width * self.crop_padding)
