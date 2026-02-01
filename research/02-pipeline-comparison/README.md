@@ -15,16 +15,15 @@ This repository contains the experimental framework for evaluating three distinc
 
 ## Table of Contents
 
-- [Research Context](#research-context)
-- [Pipeline Architecture](#pipeline-architecture)
-- [Experimental Design](#experimental-design)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Output Schema](#output-schema)
-- [Configuration](#configuration)
-- [Reproducibility](#reproducibility)
-- [Project Structure](#project-structure)
-- [Requirements](#requirements)
+1. [Research Context](#research-context)
+2. [Pipeline Architecture](#pipeline-architecture)
+3. [Experimental Design](#experimental-design)
+4. [Installation](#installation)
+5. [Usage](#usage)
+6. [Output Schema](#output-schema)
+7. [Configuration](#configuration)
+8. [Reproducibility](#reproducibility)
+9. [Project Structure](#project-structure)
 
 ## Research Context
 
@@ -42,56 +41,43 @@ Vision-Language Models (VLMs) demonstrate strong performance on single-object cl
 
 The framework implements three parallel pipelines, each processing identical input images through different visual conditioning strategies before LLM classification.
 
-### Overview
+### Pipeline Overview
 
 | Pipeline | Pre-Processing | Detection Model | Semantic Guidance |
 |:--------:|----------------|-----------------|:-----------------:|
 | **A** | None | — | None |
-| **B** | Class-agnostic | YOLOv8 (COCO) | None |
-| **C** | Open-vocabulary | YOLO-World | Food prompts |
+| **B** | Class-agnostic detection | YOLOv8 (COCO) | None |
+| **C** | Open-vocabulary detection | YOLO-World | Food-specific prompts |
 
 ### Pipeline A: LLM-Only Baseline
 
 ```mermaid
 flowchart LR
-    A[Input Image] --> B[GPT-4o Vision]
-    B --> C[Structured Output]
-
-    style A fill:#e1f5fe
-    style B fill:#fff3e0
-    style C fill:#e8f5e9
+    A[Input Image] --> B[GPT-4o Vision] --> C[Structured JSON]
 ```
 
 The baseline pipeline submits the complete image directly to the LLM with a structured prompt requesting food item identification. This approach relies entirely on the VLM's inherent multi-object recognition capabilities.
 
-### Pipeline B: Structural Pre-Processing
+### Pipeline B: Structural Pre-Processing (Class-Agnostic YOLO)
 
 ```mermaid
 flowchart LR
-    A[Input Image] --> B[YOLOv8 Detection]
+    A[Input Image] --> B[YOLOv8]
     B --> C[Geometric Filter]
     C --> D[Crop Regions]
     D --> E[GPT-4o per Crop]
-    E --> F[Aggregate & Dedupe]
-    F --> G[Structured Output]
-
-    style A fill:#e1f5fe
-    style B fill:#ffebee
-    style C fill:#ffebee
-    style D fill:#ffebee
-    style E fill:#fff3e0
-    style F fill:#f3e5f5
-    style G fill:#e8f5e9
+    E --> F[Deduplicate]
+    F --> G[Structured JSON]
 ```
 
-Pipeline B employs standard YOLOv8 (trained on COCO) for region proposal, **deliberately ignoring class labels** to isolate structural contribution.
+Pipeline B employs standard YOLOv8 (trained on COCO) for region proposal, **deliberately ignoring class labels** to isolate structural contribution. Geometric filters remove noise without semantic reasoning.
 
 **Key Characteristics:**
 - Class labels discarded (all detections treated as generic "object")
-- Geometric filtering: ≥2% image area, aspect ratio 0.2–5.0
+- Geometric filtering: minimum 2% image area, aspect ratio between 0.2–5.0
 - No semantic bias in region selection
 
-### Pipeline C: Semantic Pre-Processing
+### Pipeline C: Semantic Pre-Processing (YOLO-World)
 
 ```mermaid
 flowchart LR
@@ -99,19 +85,11 @@ flowchart LR
     B --> C[Geometric Filter]
     C --> D[Crop Regions]
     D --> E[GPT-4o per Crop]
-    E --> F[Aggregate & Dedupe]
-    F --> G[Structured Output]
-
-    style A fill:#e1f5fe
-    style B fill:#e8eaf6
-    style C fill:#e8eaf6
-    style D fill:#e8eaf6
-    style E fill:#fff3e0
-    style F fill:#f3e5f5
-    style G fill:#e8f5e9
+    E --> F[Deduplicate]
+    F --> G[Structured JSON]
 ```
 
-Pipeline C uses YOLO-World's open-vocabulary capabilities with **fixed food-specific prompts**, providing semantic guidance during region proposal.
+Pipeline C uses YOLO-World's open-vocabulary capabilities with fixed food-specific prompts, providing semantic guidance during region proposal. Identical geometric filtering is applied for fair comparison with Pipeline B.
 
 **Fixed Prompt Set:**
 ```python
@@ -121,26 +99,23 @@ Pipeline C uses YOLO-World's open-vocabulary capabilities with **fixed food-spec
 **Key Characteristics:**
 - Semantic prompts guide detection toward food-relevant regions
 - Prompts are fixed (identical across all images, no dynamic adjustment)
-- Geometric filtering identical to Pipeline B (fair comparison)
+- No specific food names to avoid biasing LLM classification
+- Geometric filtering identical to Pipeline B
 
 ### System Components
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Clients
-        LLM[LLM Client<br/>gpt-4o-mini]
-        YOLO[YOLOv8 Detector<br/>Class-Agnostic]
-        WORLD[YOLO-World Detector<br/>Semantic Prompts]
+        LLM[LLM Client]
+        YOLO[YOLOv8 Detector]
+        WORLD[YOLO-World Detector]
     end
 
     subgraph Pipelines
-        PA[Pipeline A<br/>LLM-Only]
-        PB[Pipeline B<br/>Structural]
-        PC[Pipeline C<br/>Semantic]
-    end
-
-    subgraph Output
-        OUT[Unified JSON Schema]
+        PA[Pipeline A]
+        PB[Pipeline B]
+        PC[Pipeline C]
     end
 
     PA --> LLM
@@ -149,14 +124,9 @@ graph TB
     PC --> WORLD
     PC --> LLM
 
-    PA --> OUT
+    PA --> OUT[Unified Output Schema]
     PB --> OUT
     PC --> OUT
-
-    style LLM fill:#fff3e0
-    style YOLO fill:#ffebee
-    style WORLD fill:#e8eaf6
-    style OUT fill:#e8f5e9
 ```
 
 | Component | File | Model |
@@ -169,18 +139,19 @@ graph TB
 
 ### Controlled Variables
 
-To ensure experimental validity, the following parameters are held constant:
+To ensure experimental validity, the following parameters are held constant across all pipelines:
 
 | Aspect | Value | Rationale |
 |--------|:-----:|-----------|
 | LLM Model | `gpt-4o-mini` | Identical classifier across pipelines |
-| LLM Temperature | `0` | Deterministic outputs |
-| Confidence Threshold | `0.15` | Identical sensitivity |
+| LLM Temperature | `0` | Deterministic outputs for reproducibility |
+| LLM Prompts | Frozen | Eliminate prompt engineering as variable |
+| Confidence Threshold | `0.15` | Identical sensitivity across YOLO variants |
 | IoU Threshold | `0.45` | Identical NMS behaviour |
 | Max Detections | `8` | Controlled region count |
 | Crop Padding | `10%` | Identical context capture |
-| Geometric Filters | Identical | Fair comparison between B and C |
-| Random Seed | `42` | Reproducibility |
+| Geometric Filters | Identical | Same constraints on Pipeline B and C |
+| Random Seed | `42` | Reproducibility across runs |
 
 ### Fallback Policy
 
@@ -189,67 +160,66 @@ To ensure experimental validity, the following parameters are held constant:
 ```mermaid
 flowchart TD
     A[YOLO Detection] --> B{Detections > 0?}
-    B -->|Yes| C[Process Crops]
+    B -->|Yes| C[Process Each Crop]
     B -->|No| D[Return Empty Result]
-    D --> E["{'items': [], 'detections_count': 0}"]
-
-    style D fill:#ffebee
-    style E fill:#ffebee
 ```
 
 - If YOLO detects zero regions, returns empty result
 - Does **not** fall back to full-image LLM analysis
-- Ensures pipeline independence
+- Ensures pipeline independence (Pipeline B/C results never contaminated by Pipeline A behaviour)
 
 ### Deduplication Strategy
 
-Pipelines B and C aggregate multiple LLM responses. Results are deduplicated by normalised food name (case-insensitive) to prevent double-counting overlapping detections.
+Pipelines B and C aggregate multiple LLM responses (one per detected region). Results are deduplicated by normalised food name (case-insensitive) to prevent double-counting overlapping detections. Pipeline A does not require deduplication as the LLM sees the complete image once.
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10 or higher
 - OpenAI API key with GPT-4o access
 - ~50MB disk space for YOLO models
 
 ### Setup
 
 ```bash
-# Clone repository
+# 1. Clone repository
 git clone <repository-url>
 cd SnapShelf-console
 
-# Create virtual environment
+# 2. Create virtual environment
 python -m venv venv
 
-# Activate (Windows)
+# Windows
 venv\Scripts\activate
 
-# Activate (macOS/Linux)
+# macOS/Linux
 source venv/bin/activate
 
-# Install dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
+# 4. Configure environment
 cp .env.example .env
-# Edit .env and add: OPENAI_API_KEY=sk-...
+# Edit .env and add your OpenAI API key:
+# OPENAI_API_KEY=sk-...
 ```
+
+YOLO models are downloaded automatically on first run.
 
 ## Usage
 
 ### Command-Line Interface
 
 ```bash
-# Run pipelines
-python main.py llm <image_path>          # Pipeline A
-python main.py yolo <image_path>         # Pipeline B
-python main.py yolo-world <image_path>   # Pipeline C
+# Run individual pipelines
+python main.py llm <image_path>          # Pipeline A: LLM-only
+python main.py yolo <image_path>         # Pipeline B: Class-agnostic YOLO + LLM
+python main.py yolo-world <image_path>   # Pipeline C: YOLO-World + LLM
 
-# Utilities
-python main.py --validate                # Check environment
-python main.py --warmup                  # Pre-load models
+# Utility commands
+python main.py --validate                # Verify environment and display config
+python main.py --warmup                  # Pre-load all models
 ```
 
 ### Interactive Mode
@@ -258,11 +228,9 @@ python main.py --warmup                  # Pre-load models
 python main.py
 ```
 
-```
-╔═══════════════════════════════════════════════════╗
-║       Food Detection Pipeline Comparison          ║
-╚═══════════════════════════════════════════════════╝
+Launches a menu-driven interface:
 
+```
   1.  Pipeline A — LLM-only (baseline)
   2.  Pipeline B — Class-agnostic YOLO + LLM
   3.  Pipeline C — YOLO-World + LLM
@@ -271,39 +239,42 @@ python main.py
   6.  Exit
 ```
 
-### Recommended Workflow
+### Recommended Experiment Workflow
 
 ```mermaid
 flowchart LR
-    A[Validate] --> B[Warmup]
-    B --> C[Run Experiments]
-
-    style A fill:#e1f5fe
-    style B fill:#fff3e0
-    style C fill:#e8f5e9
+    A[1. Validate] --> B[2. Warmup] --> C[3. Run Experiments]
 ```
 
 ```bash
-python main.py --validate    # 1. Check API key and config
-python main.py --warmup      # 2. Pre-load models
-python main.py llm img.jpg   # 3. Run experiments
+# 1. Verify environment (API key, config display)
+python main.py --validate
+
+# 2. Pre-load models (excludes loading time from measurements)
+python main.py --warmup
+
+# 3. Run experiments (models already in memory)
+python main.py llm image.jpg
+python main.py yolo image.jpg
+python main.py yolo-world image.jpg
 ```
 
-**Why warmup?** Without it, first run includes model loading (~5s). Warmup ensures timing reflects only inference.
+**Why warmup matters:** Without warmup, the first run of each pipeline includes model loading time (~5 seconds). The warmup command pre-loads all models so timing measurements reflect only inference time, ensuring fair comparison.
 
 ## Output Schema
 
-All pipelines produce identical JSON structure:
+All pipelines produce an identical JSON structure for standardised comparison:
 
 ```json
 {
   "items": [
     {"name": "apple", "state": "fresh"},
-    {"name": "milk", "state": "packaged"}
+    {"name": "milk", "state": "packaged"},
+    {"name": "bread", "state": "packaged"}
   ],
   "meta": {
     "pipeline": "yolo-world",
-    "image": "fridge.jpg",
+    "image": "refrigerator.jpg",
     "runtime_ms": 2847.32,
     "fallback_used": false,
     "detections_count": 5,
@@ -317,98 +288,118 @@ All pipelines produce identical JSON structure:
 }
 ```
 
-### Fields Reference
+### Item Fields
 
 | Field | Type | Description |
 |-------|:----:|-------------|
-| `name` | string | Normalised food name (lowercase) |
-| `state` | enum | `fresh` \| `packaged` \| `cooked` \| `unknown` |
-| `pipeline` | string | `llm` \| `yolo` \| `yolo-world` |
-| `runtime_ms` | float | Total execution time |
-| `detections_count` | int | YOLO detections (B/C only) |
-| `timing_breakdown` | object | Per-component timing |
+| `name` | string | Normalised food name (lowercase, generic) |
+| `state` | enum | `fresh` · `packaged` · `cooked` · `unknown` |
+
+### Metadata Fields
+
+| Field | Type | Description |
+|-------|:----:|-------------|
+| `pipeline` | string | `llm` · `yolo` · `yolo-world` |
+| `image` | string | Source image filename |
+| `runtime_ms` | float | Total execution time in milliseconds |
+| `fallback_used` | boolean | Always `false` (fallback disabled) |
+| `detections_count` | integer | Number of YOLO detections (Pipeline B/C only) |
+| `timing_breakdown` | object | Per-component timing for analysis |
+
+### Timing Breakdown
+
+| Field | Type | Description |
+|-------|:----:|-------------|
+| `image_load_ms` | float | Image loading time (Pipeline A) |
+| `detection_ms` | float | YOLO inference time (Pipeline B/C) |
+| `llm_total_ms` | float | Total LLM time across all crops |
+| `llm_avg_ms` | float | Average LLM time per crop |
+| `llm_calls` | integer | Number of LLM API calls made |
 
 ## Configuration
 
-All parameters are frozen in `config.py`:
+All experiment parameters are centralised in `config.py` as a frozen dataclass:
 
 ```python
 @dataclass(frozen=True)
 class ExperimentConfig:
-    # LLM
+    # LLM Settings
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.0
     llm_image_detail: str = "high"
+    llm_max_tokens_single: int = 150
+    llm_max_tokens_multi: int = 500
 
-    # YOLO (identical for B and C)
+    # YOLO Settings (identical for B and C)
     yolo_conf_threshold: float = 0.15
     yolo_iou_threshold: float = 0.45
     yolo_max_detections: int = 8
     yolo_crop_padding: float = 0.10
 
-    # Geometric Filters
+    # Geometric Filters (identical for B and C)
     min_bbox_area_pct: float = 0.02
     min_aspect_ratio: float = 0.2
     max_aspect_ratio: float = 5.0
 
-    # YOLO-World Prompts (Pipeline C)
+    # YOLO-World Prompts (Pipeline C only)
     yolo_world_prompts: tuple = ("food", "fruit", "vegetable", "packaged food")
 
     # Reproducibility
     random_seed: int = 42
 ```
 
+### Detection Parameters
+
+| Parameter | Value | Description |
+|-----------|:-----:|-------------|
+| `CONF_THRESHOLD` | `0.15` | Minimum detection confidence |
+| `IOU_THRESHOLD` | `0.45` | Non-Maximum Suppression overlap threshold |
+| `MAX_DETECTIONS` | `8` | Maximum regions per image |
+| `CROP_PADDING_PCT` | `0.10` | Padding around detected regions (10%) |
+
+### Geometric Filters
+
+Applied identically to both Pipeline B and C for fair comparison:
+
+| Parameter | Value | Description |
+|-----------|:-----:|-------------|
+| `MIN_BBOX_AREA_PCT` | `0.02` | Minimum bounding box area (2% of image) |
+| `MIN_ASPECT_RATIO` | `0.2` | Minimum width/height ratio |
+| `MAX_ASPECT_RATIO` | `5.0` | Maximum width/height ratio |
+
 ## Reproducibility
 
 ### Singleton Pattern
 
-All ML clients use singleton pattern:
-- Models loaded once, not per-call
-- Timing measurements exclude initialisation
-- Memory efficient
+All ML clients use a singleton pattern to ensure:
+- Models are loaded once (not per-pipeline-call)
+- Timing measurements exclude initialisation overhead
+- Memory efficiency across multiple experiment runs
+
+### Random Seed Control
+
+Reproducibility seeds are set automatically on experiment initialisation:
+- Python `random` module
+- NumPy random state
+- PyTorch (if available)
 
 ### Structured Logging
 
-Every run generates logs in `logs/experiment_{timestamp}.jsonl`:
+Every experiment run generates detailed logs in `logs/experiment_{timestamp}.jsonl`:
 
 ```json
-{"timestamp": "...", "pipeline": "yolo", "step": "detection", "details": {"confidence": 0.87}}
-{"timestamp": "...", "pipeline": "yolo", "step": "llm_call", "duration_ms": 523.4}
+{"timestamp": "2024-01-31T15:30:45", "pipeline": "yolo", "step": "detection", "details": {"bbox": {...}, "confidence": 0.87}}
+{"timestamp": "2024-01-31T15:30:46", "pipeline": "yolo", "step": "llm_call", "duration_ms": 523.4, "raw_response": "..."}
 ```
 
-### Random Seeds
+Logs capture:
+- Every YOLO detection (bounding box, confidence, filter pass/fail)
+- Every LLM call (raw response, parsed result, timing)
+- Pipeline completion summaries
 
-Set automatically on initialisation:
-- Python `random`
-- NumPy
-- PyTorch (if available)
+### Pinned Dependencies
 
-## Project Structure
-
-```
-SnapShelf-console/
-├── main.py                  # Entry point
-├── config.py                # Frozen configuration
-├── requirements.txt         # Pinned dependencies
-├── .env.example             # Environment template
-│
-├── clients/
-│   ├── llm_client.py        # OpenAI Vision (singleton)
-│   ├── yolo_detector.py     # YOLO-World (Pipeline C)
-│   └── yolo_detector_agnostic.py  # YOLOv8 (Pipeline B)
-│
-├── pipelines/
-│   ├── output.py            # Unified schema
-│   ├── llm_pipeline.py      # Pipeline A
-│   ├── yolo_agnostic_pipeline.py  # Pipeline B
-│   └── yolo_world_pipeline.py     # Pipeline C
-│
-└── logs/                    # Auto-generated experiment logs
-```
-
-## Requirements
-
-### Dependencies (Pinned)
+All dependencies are pinned to exact versions in `requirements.txt`:
 
 ```
 ultralytics==8.3.57
@@ -420,21 +411,47 @@ numpy==2.2.2
 structlog==24.4.0
 ```
 
-### System
+## Project Structure
+
+```
+SnapShelf-console/
+│
+├── main.py                           # CLI and interactive entry point
+├── config.py                         # Frozen experiment configuration
+├── requirements.txt                  # Pinned dependencies
+├── .env.example                      # Environment template
+│
+├── clients/
+│   ├── __init__.py
+│   ├── llm_client.py                 # OpenAI Vision client (singleton)
+│   ├── yolo_detector.py              # YOLO-World detector (Pipeline C)
+│   └── yolo_detector_agnostic.py     # Class-agnostic detector (Pipeline B)
+│
+├── pipelines/
+│   ├── __init__.py
+│   ├── output.py                     # Unified output schema
+│   ├── llm_pipeline.py               # Pipeline A implementation
+│   ├── yolo_agnostic_pipeline.py     # Pipeline B implementation
+│   └── yolo_world_pipeline.py        # Pipeline C implementation
+│
+└── logs/                             # Auto-generated experiment logs
+```
+
+## System Requirements
 
 | Requirement | Specification |
 |-------------|:-------------:|
 | Python | 3.10+ |
-| RAM | 4GB min, 8GB recommended |
-| Disk | ~50MB (models) |
-| Network | Required (OpenAI API) |
-| GPU | Optional |
+| RAM | 4GB minimum (8GB recommended) |
+| Disk | ~50MB (YOLO models) |
+| Network | Required for OpenAI API |
+| GPU | Optional (CPU supported) |
 
 ## License
 
-BSc Dissertation Project. See repository license for terms.
+This project is developed as part of a BSc dissertation.
 
 ## Acknowledgements
 
-- [Ultralytics](https://github.com/ultralytics/ultralytics) — YOLOv8 and YOLO-World
-- [OpenAI](https://openai.com) — GPT-4o Vision API
+- [Ultralytics](https://github.com/ultralytics/ultralytics) for YOLOv8 and YOLO-World
+- [OpenAI](https://openai.com) for GPT-4o Vision API
