@@ -1,14 +1,9 @@
 """
-External integration clients for vlm-pipeline-comparison.
+Client modules for Experiment 2: End-to-End Pipeline Comparison.
 
 Contains:
-- LLMClient: OpenAI Vision API client with frozen prompts
-- YOLODetector: YOLO-World open-vocabulary detector (Pipeline C)
-- YOLODetectorAgnostic: Class-agnostic YOLOv8 detector (Pipeline B)
+- vlm_client:       GPT-4o-mini constrained to 14 labels (Pipeline A)
+- yolo_detector:    14-class YOLO inference (Pipeline B)
+- yolo_objectness:  1-class objectness YOLO (Pipeline C)
+- cnn_classifier:   CNN factory with pluggable architectures (Pipeline C)
 """
-
-from clients.llm_client import LLMClient
-from clients.yolo_detector import YOLODetector
-from clients.yolo_detector_agnostic import YOLODetectorAgnostic
-
-__all__ = ["LLMClient", "YOLODetector", "YOLODetectorAgnostic"]
