@@ -1,11 +1,13 @@
 """
-Configuration and reproducibility module for Food Detection Pipeline Comparison.
+Configuration and reproducibility module for Experiment 2:
+End-to-End Pipeline Comparison (14-class Fruit/Veg Inventory).
 
 This module provides:
+- 14-class inventory constants
+- Frozen ExperimentConfig for fair comparison
 - Environment validation (API keys, dependencies)
 - Structured logging setup
 - Random seed control for reproducibility
-- Model versioning and hash verification
 - Timing utilities that exclude initialization
 
 DISSERTATION ARTIFACT: All settings frozen for fair comparison.
@@ -22,12 +24,30 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 import time
+import json
 
 import numpy as np
 from dotenv import load_dotenv
 
 # Load environment variables at module import
 load_dotenv()
+
+
+# =============================================================================
+# 14-CLASS INVENTORY CONSTANTS
+# =============================================================================
+
+CLASSES: tuple[str, ...] = (
+    "apple", "banana", "bell_pepper_green", "bell_pepper_red",
+    "carrot", "cucumber", "grape", "lemon",
+    "onion", "orange", "peach", "potato",
+    "strawberry", "tomato",
+)
+
+CLASS_TO_ID: Dict[str, int] = {name: idx for idx, name in enumerate(CLASSES)}
+ID_TO_CLASS: Dict[int, str] = {idx: name for idx, name in enumerate(CLASSES)}
+
+NUM_CLASSES: int = len(CLASSES)  # 14
 
 
 # =============================================================================
@@ -39,34 +59,49 @@ class ExperimentConfig:
     """
     Frozen configuration for reproducible experiments.
     All values locked - do not modify during experiment runs.
+
+    Pipelines:
+        A (vlm):      Image -> GPT-4o-mini (constrained to 14 labels) -> inventory
+        B (yolo-14):  Image -> 14-class YOLO -> boxes + labels -> inventory
+        C (yolo-cnn): Image -> 1-class objectness YOLO -> crops -> CNN -> inventory
     """
-    # LLM Settings
-    llm_model: str = "gpt-4o-mini"
-    llm_temperature: float = 0.0
-    llm_image_detail: str = "high"
-    llm_max_tokens_single: int = 150
-    llm_max_tokens_multi: int = 500
+    # --- VLM Settings (Pipeline A) ---
+    vlm_model: str = "gpt-4o-mini"
+    vlm_temperature: float = 0.0
+    vlm_image_detail: str = "high"
+    vlm_max_tokens: int = 500
 
-    # YOLO Settings (identical for B and C for fair comparison)
-    yolo_conf_threshold: float = 0.15
+    # --- YOLO Settings (shared by B and C) ---
+    yolo_conf_threshold: float = 0.25
     yolo_iou_threshold: float = 0.45
-    yolo_max_detections: int = 8
-    yolo_crop_padding: float = 0.10
+    yolo_max_detections: int = 30
+    yolo_img_size: int = 640
 
-    # Geometric Filters (identical for B and C)
-    min_bbox_area_pct: float = 0.02
-    min_aspect_ratio: float = 0.2
-    max_aspect_ratio: float = 5.0
+    # --- YOLO 14-class (Pipeline B) ---
+    yolo_14class_weights: str = "weights/yolo_14class_best.pt"
 
-    # Model files
-    yolo_standard_model: str = "yolov8s.pt"
-    yolo_world_model: str = "yolov8s-worldv2.pt"
+    # --- YOLO objectness (Pipeline C) ---
+    yolo_objectness_weights: str = "weights/yolo_objectness_best.pt"
 
-    # YOLO-World prompts (FIXED - never changes per image)
-    yolo_world_prompts: tuple = ("food", "fruit", "vegetable", "packaged food")
+    # --- CNN Settings (Pipeline C) ---
+    cnn_model_name: str = "efficientnet"  # efficientnet | resnet | custom
+    cnn_weights: str = "weights/cnn_winner.pth"
+    cnn_img_size: int = 224
+    cnn_crop_padding: float = 0.10
 
-    # Random seed for reproducibility
+    # --- Training defaults ---
+    train_epochs: int = 100
+    train_batch_size: int = 16
+    train_patience: int = 15
+    train_lr: float = 0.01
+
+    # --- Random seed for reproducibility ---
     random_seed: int = 42
+
+    # --- Paths ---
+    results_dir: str = "results"
+    logs_dir: str = "logs"
+    weights_dir: str = "weights"
 
 
 # Global config instance
@@ -74,65 +109,18 @@ CONFIG = ExperimentConfig()
 
 
 # =============================================================================
-# MODEL VERSION TRACKING
-# =============================================================================
-
-# Expected SHA256 hashes for model files (first 16 chars for brevity)
-# Update these after downloading models to ensure consistency
-EXPECTED_MODEL_HASHES = {
-    "yolov8s.pt": None,  # Will be set on first verified run
-    "yolov8s-worldv2.pt": None,  # Will be set on first verified run
-}
-
-
-def compute_file_hash(filepath: str, algorithm: str = "sha256") -> str:
-    """Compute hash of a file for version verification."""
-    hash_func = hashlib.new(algorithm)
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            hash_func.update(chunk)
-    return hash_func.hexdigest()[:16]  # First 16 chars
-
-
-def verify_model_hash(model_path: str) -> Dict[str, Any]:
-    """
-    Verify model file hash and return version info.
-
-    Returns:
-        Dict with 'path', 'hash', 'verified', 'expected'
-    """
-    path = Path(model_path)
-    if not path.exists():
-        return {
-            "path": str(path),
-            "hash": None,
-            "verified": False,
-            "expected": EXPECTED_MODEL_HASHES.get(path.name),
-            "error": "File not found"
-        }
-
-    actual_hash = compute_file_hash(str(path))
-    expected = EXPECTED_MODEL_HASHES.get(path.name)
-
-    return {
-        "path": str(path),
-        "hash": actual_hash,
-        "verified": expected is None or actual_hash == expected,
-        "expected": expected,
-        "size_bytes": path.stat().st_size
-    }
-
-
-# =============================================================================
 # ENVIRONMENT VALIDATION
 # =============================================================================
 
-def validate_environment() -> Dict[str, Any]:
+def validate_environment(require_openai: bool = False) -> Dict[str, Any]:
     """
     Validate all required environment variables and dependencies.
 
+    Args:
+        require_openai: If True, fail when OPENAI_API_KEY is missing (Pipeline A only).
+
     Returns:
-        Dict with validation results and any errors
+        Dict with validation results and any errors.
     """
     results = {
         "valid": True,
@@ -141,13 +129,19 @@ def validate_environment() -> Dict[str, Any]:
         "config": {}
     }
 
-    # Check OpenAI API key
+    # Check OpenAI API key (only required for Pipeline A)
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        results["valid"] = False
-        results["errors"].append(
-            "OPENAI_API_KEY not found. Set it in .env file or environment."
-        )
+        if require_openai:
+            results["valid"] = False
+            results["errors"].append(
+                "OPENAI_API_KEY not found. Set it in .env file or environment. "
+                "Required for Pipeline A (VLM)."
+            )
+        else:
+            results["warnings"].append(
+                "OPENAI_API_KEY not set. Pipeline A (VLM) will not work."
+            )
     elif not api_key.startswith(("sk-", "sk-proj-")):
         results["warnings"].append(
             "OPENAI_API_KEY doesn't start with expected prefix (sk- or sk-proj-)"
@@ -155,10 +149,12 @@ def validate_environment() -> Dict[str, Any]:
 
     # Record config for logging
     results["config"] = {
-        "llm_model": CONFIG.llm_model,
-        "llm_temperature": CONFIG.llm_temperature,
+        "vlm_model": CONFIG.vlm_model,
+        "vlm_temperature": CONFIG.vlm_temperature,
         "yolo_conf_threshold": CONFIG.yolo_conf_threshold,
         "yolo_max_detections": CONFIG.yolo_max_detections,
+        "cnn_model_name": CONFIG.cnn_model_name,
+        "num_classes": NUM_CLASSES,
         "random_seed": CONFIG.random_seed,
         "timestamp": datetime.now().isoformat(),
         "python_version": sys.version,
@@ -186,15 +182,11 @@ def set_reproducibility_seed(seed: Optional[int] = None) -> int:
     random.seed(seed)
     np.random.seed(seed)
 
-    # Try to set torch seed if available
     try:
         import torch
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
-            # Note: Full determinism requires additional settings
-            # torch.backends.cudnn.deterministic = True
-            # torch.backends.cudnn.benchmark = False
     except ImportError:
         pass
 
@@ -224,7 +216,7 @@ class ExperimentLogger:
     """
 
     def __init__(self, log_dir: Optional[str] = None):
-        self.log_dir = Path(log_dir) if log_dir else Path("logs")
+        self.log_dir = Path(log_dir) if log_dir else Path(CONFIG.logs_dir)
         self.log_dir.mkdir(exist_ok=True)
 
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -248,8 +240,6 @@ class ExperimentLogger:
         """Add a log entry."""
         self.logs.append(entry)
 
-        # Write to JSONL file immediately (append mode)
-        import json
         with open(self.log_file, "a") as f:
             f.write(json.dumps({
                 "timestamp": entry.timestamp,
@@ -261,7 +251,6 @@ class ExperimentLogger:
                 "error": entry.error
             }) + "\n")
 
-        # Also log to standard logger
         if entry.error:
             self.logger.error(f"[{entry.pipeline}] {entry.step}: {entry.error}")
         else:
@@ -275,8 +264,7 @@ class ExperimentLogger:
         image: str,
         bbox: Dict,
         confidence: float,
-        passed_filter: bool,
-        prompt_match: str = "object"
+        label: str = "object"
     ):
         """Log a single detection event."""
         self.log(PipelineLog(
@@ -286,33 +274,8 @@ class ExperimentLogger:
             details={
                 "bbox": bbox,
                 "confidence": confidence,
-                "passed_filter": passed_filter,
-                "prompt_match": prompt_match
+                "label": label
             }
-        ))
-
-    def log_llm_call(
-        self,
-        pipeline: str,
-        image: str,
-        crop_index: Optional[int],
-        raw_response: str,
-        parsed_result: Any,
-        duration_ms: float,
-        error: Optional[str] = None
-    ):
-        """Log an LLM API call."""
-        self.log(PipelineLog(
-            pipeline=pipeline,
-            image=image,
-            step="llm_call",
-            duration_ms=duration_ms,
-            details={
-                "crop_index": crop_index,
-                "raw_response": raw_response[:500] if raw_response else None,  # Truncate for storage
-                "parsed_result": parsed_result
-            },
-            error=error
         ))
 
     def get_summary(self) -> Dict[str, Any]:
@@ -385,54 +348,26 @@ def timed_operation(name: str):
 
 
 # =============================================================================
-# WARM-UP UTILITIES
+# INITIALIZATION
 # =============================================================================
 
-def warmup_models(yolo_standard: Any = None, yolo_world: Any = None, iterations: int = 1):
-    """
-    Run warm-up iterations to stabilize GPU/CPU caches.
-
-    Args:
-        yolo_standard: YOLODetectorAgnostic instance
-        yolo_world: YOLODetector instance
-        iterations: Number of warm-up iterations
-    """
-    from PIL import Image
-    import io
-
-    # Create a dummy image for warm-up
-    dummy_img = Image.new("RGB", (640, 480), color="gray")
-    buffer = io.BytesIO()
-    dummy_img.save(buffer, format="PNG")
-    dummy_path = Path("_warmup_temp.png")
-    dummy_img.save(dummy_path)
-
-    try:
-        for i in range(iterations):
-            if yolo_standard is not None:
-                _ = yolo_standard.detect(str(dummy_path))
-            if yolo_world is not None:
-                _ = yolo_world.detect(str(dummy_path))
-    finally:
-        # Clean up temp file
-        if dummy_path.exists():
-            dummy_path.unlink()
+def ensure_dirs():
+    """Create output directories if they don't exist."""
+    for d in (CONFIG.results_dir, CONFIG.logs_dir, CONFIG.weights_dir):
+        Path(d).mkdir(exist_ok=True)
 
 
-# =============================================================================
-# INITIALIZATION CHECK
-# =============================================================================
-
-def init_experiment() -> Dict[str, Any]:
+def init_experiment(require_openai: bool = False) -> Dict[str, Any]:
     """
     Initialize experiment environment.
     Call this before running any pipelines.
 
     Returns:
-        Dict with initialization status and config
+        Dict with initialization status and config.
     """
-    # Validate environment
-    env_result = validate_environment()
+    ensure_dirs()
+
+    env_result = validate_environment(require_openai=require_openai)
 
     if not env_result["valid"]:
         raise RuntimeError(
@@ -440,13 +375,10 @@ def init_experiment() -> Dict[str, Any]:
             "\n".join(f"  - {e}" for e in env_result["errors"])
         )
 
-    # Set reproducibility seed
     seed = set_reproducibility_seed()
 
-    # Initialize logger
     logger = get_logger()
     logger.logger.info(f"Experiment initialized with seed {seed}")
-    logger.logger.info(f"Config: {env_result['config']}")
 
     return {
         "status": "initialized",
