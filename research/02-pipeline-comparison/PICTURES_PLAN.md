@@ -37,9 +37,9 @@ From your shopping, you have:
 - When plan says `apple×2` = place 2 separate apples, each gets its own box
 
 ### Packaging rules
-- **Default: UNPACKAGED.** Remove items from bags, nets, punnets, trays.
-- **Exception:** Images marked with `[PKG]` — keep some/all items in packaging.
-- Grocery bag/basket location has the most `[PKG]` shots (realistic).
+- **ALL items UNPACKAGED.** Remove everything from bags, nets, punnets, and trays.
+- This isolates recognition performance from packaging occlusion.
+- Grapes: tip out of punnet into a cluster. Strawberries: place individual berries loose.
 
 ### Photography rules
 - Use the **same phone** for every shot
@@ -170,7 +170,7 @@ Some items can sit in the door shelf. Shoot into the fridge.
 | 042 | TD | TOM, RPP, ONI×2, POT, CAR, CUC | 7 | [RT][PI] | Veg drawer overfilled |
 | 043 | TD | GPP, CUC, TOM, APP, ORA, LEM, STR | 7 | [CG][TA][LO] | Mixed shelf, crowded |
 | 044 | 45 | BAN, GRA, STR×2, PEA, ORA, RPP, CAR | 8 | [PO] | Across 2 shelves |
-| 045 | 45 | APP, TOM, ONI, POT, GPP, CUC, CAR, RPP | 8 | [TA][CG][PI] | Full fridge view |
+| 045 | 45 | APP, TOM, ONI, POT, GPP, CUC, CAR, RPP | 8 | [TA][CG][RT][PI] | Full fridge view |
 | 046 | SD | BAN, ORA, LEM, PEA×2, GRA, STR, APP | 8 | [PO][LO] | Stacked shelves |
 | 047 | SD | TOM×2, RPP, GPP, CUC, CAR, POT, ONI | 8 | [RT][CG][PI] | Dense veg shelf |
 | 048 | SD | APP, BAN, PEA, GRA, STR, ORA, POT, LEM | 8 | [PO] | Full fridge, items on multiple levels |
@@ -234,11 +234,11 @@ This is the location where **packaging is used** in some shots.
 
 | IMG | Angle | Items | Total | Pairs | Arrangement notes |
 |-----|-------|-------|-------|-------|-------------------|
-| 073 | TD | APP, BAN | 2 | — | [PKG] Apples in tray, banana loose on top |
-| 074 | TD | ORA, LEM | 2 | [LO] | [PKG] Oranges in net bag, lemon beside |
-| 075 | TD | STR, GRA | 2 | — | [PKG] Both in punnets, in bag |
-| 076 | 45 | CAR, POT | 2 | — | [PKG] Carrots in bag, potatoes in bag |
-| 077 | 45 | TOM, RPP | 2 | [RT] | [PKG] Tomatoes in pack, pepper in bag |
+| 073 | TD | APP, BAN | 2 | — | Loose in bag, spaced apart |
+| 074 | TD | ORA, LEM | 2 | [LO] | Citrus duo in bag |
+| 075 | TD | STR, GRA | 2 | — | Grape cluster + strawberry in bag |
+| 076 | 45 | CAR, POT | 2 | — | Root veg loose in bag |
+| 077 | 45 | TOM, RPP | 2 | [RT] | Both red, loose in bag |
 | 078 | 45 | PEA, ORA | 2 | [PO] | Loose in basket |
 | 079 | SD | CUC, GPP, ONI | 3 | [CG] | Spilling out of bag |
 | 080 | SD | BAN, LEM, PEA | 3 | — | Loose items beside basket |
@@ -248,9 +248,9 @@ This is the location where **packaging is used** in some shots.
 | IMG | Angle | Items | Total | Pairs | Arrangement notes |
 |-----|-------|-------|-------|-------|-------------------|
 | 081 | TD | APP, ORA, LEM, PEA | 4 | [PO][LO] | Mixed fruit in bag, looking down |
-| 082 | TD | TOM, RPP, GPP, CUC | 4 | [RT][CG] | [PKG] Veg in bag, some in packaging |
+| 082 | TD | TOM, RPP, GPP, CUC | 4 | [RT][CG] | Veg group in open bag |
 | 083 | 45 | BAN, GRA, STR, CAR | 4 | — | In open basket |
-| 084 | 45 | POT×2, ONI, CAR, RPP | 5 | [PI] | [PKG] Root veg still in bags |
+| 084 | 45 | POT×2, ONI, CAR, RPP | 5 | [PI] | Root veg loose in basket |
 | 085 | 45 | APP, BAN, ORA×2, PEA | 5 | [PO] | Fruit spilling out of bag |
 | 086 | SD | TOM, CUC, GPP, ONI, LEM | 5 | [CG] | Half in, half out of bag |
 | 087 | SD | STR, PEA, ORA, APP, LEM | 5 | [PO][LO] | Fruit poured onto table from bag |
@@ -267,7 +267,7 @@ This is the location where **packaging is used** in some shots.
 | 093 | 45 | APP, BAN×2, GRA, PEA, ORA, LEM, STR | 8 | [PO][LO] | 2 separated bananas in pile |
 | 094 | SD | TOM×2, APP, RPP, ONI, POT, CAR, GPP | 8 | [TA][RT][PI] | Dense pile beside bag |
 | 095 | SD | GRA, STR, ORA×2, LEM, PEA, BAN, CAR | 8 | [PO][LO] | 2 oranges in fruit mix |
-| 096 | SD | APP, CUC, GPP, ONI, POT, RPP, TOM, GRA | 8 | [CG][PI] | Everything out of bag |
+| 096 | SD | APP, CUC, GPP, ONI, POT, RPP, TOM, GRA | 8 | [TA][CG][RT][PI] | Everything out of bag |
 
 ---
 
@@ -314,7 +314,7 @@ Good lighting. All items unpackaged and clean.
 | 117 | 45 | APP, GRA, STR, PEA, ORA, LEM, TOM, CAR | 8 | [PO][LO][TA] | Dense fruit + veg mix |
 | 118 | SD | TOM, APP, RPP, ONI, POT, BAN, GPP, STR | 8 | [TA][RT][PI] | Piled on board |
 | 119 | SD | GRA, ORA, LEM, PEA, BAN, CUC, CAR, ONI | 8 | [PO][LO] | Full board, fruit heavy |
-| 120 | SD | APP, TOM, RPP, GPP, CUC, POT, STR, GRA | 8 | [CG][RT] | Everything on board |
+| 120 | SD | APP, TOM, RPP, GPP, CUC, POT, STR, GRA | 8 | [TA][CG][RT] | Everything on board |
 
 ---
 
@@ -324,33 +324,33 @@ Good lighting. All items unpackaged and clean.
 
 | Class | L1 | L2 | L3 | L4 | L5 | Total | Min 15? |
 |-------|-----|-----|-----|-----|-----|-------|---------|
-| apple | 11 | 10 | 10 | 9 | 9 | **49** | YES |
-| banana | 8 | 8 | 9 | 10 | 9 | **44** | YES |
-| bell_pepper_green | 6 | 5 | 6 | 7 | 7 | **31** | YES |
+| apple | 11 | 10 | 10 | 9 | 10 | **50** | YES |
+| banana | 8 | 8 | 8 | 9 | 8 | **41** | YES |
+| bell_pepper_green | 6 | 5 | 7 | 7 | 7 | **32** | YES |
 | bell_pepper_red | 7 | 7 | 7 | 7 | 8 | **36** | YES |
-| carrot | 10 | 8 | 9 | 8 | 8 | **43** | YES |
-| cucumber | 7 | 8 | 8 | 7 | 8 | **38** | YES |
-| grape | 7 | 7 | 8 | 8 | 8 | **38** | YES |
-| lemon | 8 | 9 | 9 | 9 | 8 | **43** | YES |
-| onion | 9 | 8 | 8 | 8 | 8 | **41** | YES |
-| orange | 7 | 10 | 9 | 9 | 9 | **44** | YES |
+| carrot | 10 | 8 | 7 | 8 | 8 | **41** | YES |
+| cucumber | 7 | 8 | 7 | 6 | 7 | **35** | YES |
+| grape | 7 | 7 | 8 | 7 | 8 | **37** | YES |
+| lemon | 7 | 9 | 9 | 9 | 8 | **42** | YES |
+| onion | 9 | 7 | 8 | 8 | 7 | **39** | YES |
+| orange | 7 | 10 | 8 | 9 | 9 | **43** | YES |
 | peach | 8 | 8 | 8 | 9 | 8 | **41** | YES |
 | potato | 7 | 7 | 7 | 7 | 8 | **36** | YES |
-| strawberry | 6 | 7 | 7 | 7 | 7 | **34** | YES |
-| tomato | 10 | 9 | 9 | 10 | 10 | **48** | YES |
+| strawberry | 6 | 6 | 8 | 7 | 6 | **33** | YES |
+| tomato | 9 | 8 | 9 | 8 | 10 | **44** | YES |
 
-All classes well above the 15-image minimum. Range: 31–49.
+All classes well above the 15-image minimum. Range: 32–50.
 
 ### Confusing pair coverage
 
 | Pair | Tag | Target | Achieved |
 |------|-----|--------|----------|
-| Lemon + Orange | [LO] | ≥ 5 | ~30 images | YES |
-| Peach + Orange | [PO] | ≥ 5 | ~30 images | YES |
-| Tomato + Apple | [TA] | ≥ 5 | ~15 images | YES |
-| Red pepper + Tomato | [RT] | ≥ 5 | ~23 images | YES |
-| Potato + Onion | [PI] | ≥ 5 | ~30 images | YES |
-| Cucumber + Green pepper | [CG] | ≥ 5 | ~27 images | YES |
+| Lemon + Orange | [LO] | ≥ 5 | 32 images |
+| Peach + Orange | [PO] | ≥ 5 | 32 images |
+| Tomato + Apple | [TA] | ≥ 5 | 18 images |
+| Red pepper + Tomato | [RT] | ≥ 5 | 28 images |
+| Potato + Onion | [PI] | ≥ 5 | 31 images |
+| Cucumber + Green pepper | [CG] | ≥ 5 | 27 images |
 
 ### Angle distribution
 
@@ -377,13 +377,6 @@ All classes well above the 15-image minimum. Range: 31–49.
 | Wooden table | **24** |
 | Grocery bag / basket | **24** |
 | Chopping board / plate | **24** |
-
-### Packaging shots
-
-| Location | [PKG] images | IDs |
-|----------|-------------|-----|
-| Grocery bag/basket | 6 | 073, 074, 075, 076, 077, 082, 084 |
-| Other locations | 0 | — |
 
 ---
 
