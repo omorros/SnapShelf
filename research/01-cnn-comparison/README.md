@@ -1,266 +1,271 @@
-# SnapShelf — Experiment 1: CNN Architecture Comparison
+# Experiment 1: CNN Architecture Comparison
 
-**Module:** MOD002691 · Computing Project
-**Focus:** Food Image Classification · 14 Classes · 120,842 Images
-**Best result:** 99.77% test accuracy (ResNet-50) · 99.75% (EfficientNetB0) · 98.34% (Custom CNN)
-**Selected model for Experiment 2:** EfficientNetB0
-
----
-
-## Overview
-
-SnapShelf is a photo-to-inventory recognition system for produce. The end-to-end goal — detailed across three experiments — is to take a shelf photograph and automatically generate an inventory list. Before that pipeline can be built, there is a fundamental question that must be answered: **which CNN architecture best classifies individual produce crops?**
-
-Experiment 1 answers exactly that. Three architectures are trained and evaluated head-to-head on a controlled 14-class food dataset: a custom VGG-style CNN built from scratch (the baseline), EfficientNetB0 fine-tuned from ImageNet weights (the efficient modern approach), and ResNet-50 fine-tuned from ImageNet weights (the established heavyweight). The winning architecture feeds directly into the crop-classification stage of Experiment 2's YOLO+CNN pipeline.
-
-Every decision in this experiment — hardware selection, dataset construction, split ratios, training protocol, and architecture-specific fine-tuning depth — was made deliberately and is justified here.
-
----
+**Module:** MOD002691 Computing Project
+**Task:** Classify 14 produce classes across 120,842 images
+**Selected model:** EfficientNetB0 (99.75% accuracy, 40 MB)
 
 ## Contents
 
-- [The Research Question](#the-research-question)
-- [Results at a Glance](#results-at-a-glance)
-- [Repository Structure](#repository-structure)
-- [Step 1 — Hardware Selection](#step-1--hardware-selection)
-- [Step 2 — Dataset Pipeline](#step-2--dataset-pipeline)
-- [Step 3 — Architecture Selection](#step-3--architecture-selection)
-- [Step 4 — Training Protocol](#step-4--training-protocol)
-- [Step 5 — Model Architectures](#step-5--model-architectures)
+- [Research Question](#research-question)
 - [Results](#results)
-- [Analysis and Discussion](#analysis-and-discussion)
+- [Repository Structure](#repository-structure)
+- [Hardware Selection](#hardware-selection)
+- [Dataset Pipeline](#dataset-pipeline)
+- [Architecture Selection](#architecture-selection)
+- [Training Protocol](#training-protocol)
+- [Model Architectures](#model-architectures)
+- [Detailed Results](#detailed-results)
+- [Analysis](#analysis)
 - [Model Selection for Experiment 2](#model-selection-for-experiment-2)
-- [Limitations and Threats to Validity](#limitations-and-threats-to-validity)
+- [Limitations](#limitations)
 - [How to Reproduce](#how-to-reproduce)
 - [Requirements](#requirements)
-- [References](#references)
+## Research Question
 
----
+> Which CNN architecture achieves the best trade-off between classification accuracy and computational efficiency for food image recognition, when trained under identical conditions?
 
-## The Research Question
+The answer must account for both raw performance (accuracy, macro-F1) and deployment fitness (model size, parameter count). In Experiment 2, the selected model runs once per bounding-box crop inside a YOLO+CNN pipeline, so efficiency matters as much as accuracy.
 
-> *Which CNN architecture achieves the best trade-off between classification accuracy and computational efficiency for food image recognition, when trained under identical conditions?*
+## Results
 
-The question has two parts: raw performance (accuracy, macro-F1) and practical fitness for deployment (model size, parameter count, training cost). The answer cannot be "whichever achieves the highest single number" — it must account for the fact that in Experiment 2, the chosen model will run once per bounding-box crop, potentially multiple times per image, inside a pipeline that needs to operate on consumer hardware.
-
----
-
-## Results at a Glance
-
-| Model | Test Accuracy | Macro F1 | Parameters | Model Size | Training Time | Total Epochs |
+| Model | Test Accuracy | Macro F1 | Parameters | Model Size | Training Time | Epochs |
 |---|---|---|---|---|---|---|
 | Custom CNN | 98.34% | 0.9823 | 4.96M | 56.9 MB | ~24.8 h | 81 |
 | EfficientNetB0 | 99.75% | 0.9972 | 4.07M | 40.0 MB | 10.96 h | 42 |
-| **ResNet-50** | **99.77%** | **0.9973** | 24.13M | 211.0 MB | 8.13 h | 32 |
+| ResNet-50 | **99.77%** | **0.9973** | 24.13M | 211.0 MB | 8.13 h | 32 |
 
-**Selected for Experiment 2: EfficientNetB0.** ResNet-50 leads by 0.02% accuracy, a difference that falls entirely within the Wilson 95% confidence interval (overlapping CIs on 18,141 test samples). EfficientNetB0 is 5.3× smaller and trained 2.3× faster. On functionally equivalent accuracy, efficiency is the deciding criterion.
-
----
+ResNet-50 leads by 0.02%, but the Wilson 95% confidence intervals overlap on 18,141 test samples. The difference is not statistically significant. EfficientNetB0 is 5.3x smaller and was selected for Experiment 2.
 
 ## Repository Structure
 
 ```
 .
 ├── notebooks/
-│   ├── 01_hardware_accelerator_benchmark.ipynb   # GPU selection for fair comparison
-│   ├── 02_dataset_preparation.ipynb              # Merge, deduplicate, split, verify
-│   ├── 03_custom_cnn_training.ipynb              # Baseline: VGG-style CNN from scratch
-│   ├── 04_efficientnet_training.ipynb            # Transfer learning: EfficientNetB0
-│   ├── 05_resnet50_training.ipynb                # Transfer learning: ResNet-50
-│   └── 06_model_comparison.ipynb                 # Statistical comparison and selection
+│   ├── 01_hardware_accelerator_benchmark.ipynb
+│   ├── 02_dataset_preparation.ipynb
+│   ├── 03_custom_cnn_training.ipynb
+│   ├── 04_efficientnet_training.ipynb
+│   ├── 05_resnet50_training.ipynb
+│   └── 06_model_comparison.ipynb
 └── README.md
 ```
 
-**Run the notebooks in order.** Each builds on the outputs of the previous one. Notebooks are designed for Google Colab with a GPU runtime (T4 recommended).
+Run notebooks in order. Each depends on the outputs of the previous one. All notebooks are designed for Google Colab with a T4 GPU runtime.
 
-> **Branch note:** All prior development versions are preserved on the `archive` branch under `v1/` and `v2/`. The `notebooks/` directory here is the final, clean submission version.
+> Prior development versions are preserved on the `archive` branch under `v1/` and `v2/`.
 
----
-
-## Step 1 — Hardware Selection
+## Hardware Selection
 
 *Notebook: `01_hardware_accelerator_benchmark.ipynb`*
 
-Before training a single model, a hardware decision had to be made. Google Colab offers multiple GPU tiers (T4, L4, A100) at different cost points, and training three models at 80k+ images per epoch is an expensive operation. Selecting different hardware for different models would introduce an uncontrolled variable into the comparison.
+A 3-epoch benchmark was run on all available Colab accelerators using the same model and dataset. The goal was to select a single GPU tier for all training runs, removing hardware as a variable.
 
-To solve this, a controlled benchmark was run: the same Custom CNN architecture, the same dataset, and three training epochs were executed identically on CPU, Tesla T4, NVIDIA L4, and NVIDIA A100-SXM4-80GB. The evaluation criterion was **cost efficiency** — training speed normalised by the relative cost tier of each accelerator.
-
-| Accelerator | Avg Epoch Time | Speedup over CPU | Cost Tier | Cost Efficiency Score |
+| Accelerator | Avg Epoch Time | Speedup vs CPU | Cost Tier | Cost Efficiency |
 |---|---|---|---|---|
-| CPU | 2,378.9 s | 1.0× | 0.5× | — |
-| **Tesla T4** | **159.96 s** | **14.87×** | **1.0×** | **14.87** |
-| NVIDIA L4 | 115.12 s | 20.66× | 2.0× | 10.33 |
-| NVIDIA A100 | 113.53 s | 20.95× | 4.0× | 5.24 |
+| CPU | 2,378.9 s | 1.0x | 0.5x | baseline |
+| **Tesla T4** | **159.96 s** | **14.87x** | **1.0x** | **14.87** |
+| NVIDIA L4 | 115.12 s | 20.66x | 2.0x | 10.33 |
+| NVIDIA A100 | 113.53 s | 20.95x | 4.0x | 5.24 |
 
-The Tesla T4 delivers the best speedup per cost unit — 14.87 speed units per cost unit, versus 10.33 for the L4 and 5.24 for the A100. The A100 is faster in absolute terms but offers diminishing returns given its 4× premium. **All three model training runs were conducted on the Tesla T4**, ensuring hardware-consistent results across the comparison.
+The A100 is only 1.4x faster than the T4 but costs 4x more compute units. The T4 delivers the best speedup per cost unit. All three models were trained on the Tesla T4.
 
----
-
-## Step 2 — Dataset Pipeline
+## Dataset Pipeline
 
 *Notebook: `02_dataset_preparation.ipynb`*
 
+```mermaid
+flowchart LR
+    A["3 Kaggle Sources\n163,316 images"] --> B["SHA-256\nDeduplication"]
+    B --> C["120,842 unique\nimages"]
+    C --> D["Stratified Split\n70 / 15 / 15"]
+    D --> E["Train: 84,582"]
+    D --> F["Val: 18,119"]
+    D --> G["Test: 18,141"]
+    G --> H["Leakage Check\n0 overlaps"]
+```
+
 ### Sources
 
-The dataset was compiled from three independent Kaggle repositories covering produce imagery:
+Three Kaggle datasets were merged:
 
 - `moltean/fruits` (Fruits-360)
 - `sshikamaru/fruit-recognition`
 - `utkarshsaxenadn/fruits-classification`
 
-Combining three sources introduces an immediate risk: **duplicate images appearing across sources**, which would cause data leakage if the same image ends up in both training and test sets. This was handled rigorously.
-
 ### Deduplication
 
-Every image was fingerprinted with a SHA-256 hash. Exact duplicates — whether within a source or across sources — were removed globally before any split was computed. Of the 163,316 original images:
+Every image was hashed with SHA-256. Exact duplicates, both within and across sources, were removed before splitting.
 
-- **42,474 duplicates removed** (9,263 were cross-source duplicates, confirming inter-dataset overlap was real)
-- **120,842 unique images retained**
+| Metric | Count |
+|---|---|
+| Original images | 163,316 |
+| Duplicates removed | 42,474 (26%) |
+| Cross-source duplicates | 9,263 |
+| **Final unique images** | **120,842** |
 
-A full deduplication report (`deduplication_report.csv`) and a dataset manifest (`dataset_manifest.csv`) with per-image SHA-256 hashes were generated for audit purposes.
+Outputs: `deduplication_report.csv`, `dataset_manifest.csv` (per-image SHA-256 hashes).
 
 ### Class Mapping
 
-Folder names across sources were inconsistent (e.g., `Apple Braeburn`, `apple_6`, `Apple`). A careful include/exclude pattern mapping was used to assign each folder to one of the 14 target classes, with substring collision prevention to avoid false matches.
+Folder names across sources were inconsistent (e.g. `Apple Braeburn`, `apple_6`, `Apple`). Include/exclude pattern mapping assigned each folder to one of 14 target classes with substring collision prevention.
 
-**Target classes (14):** apple, banana, bell\_pepper\_green, bell\_pepper\_red, carrot, cucumber, grape, lemon, onion, orange, peach, potato, strawberry, tomato
+**14 classes:** apple, banana, bell_pepper_green, bell_pepper_red, carrot, cucumber, grape, lemon, onion, orange, peach, potato, strawberry, tomato
 
-### Split Rationale: 70 / 15 / 15
+### Split: 70 / 15 / 15
 
-A 70/15/15 train/validation/test split was chosen over the more common 80/10/10. The reason is class imbalance.
+A 15% test split was chosen over 10% because of class imbalance. The dataset has a 113:1 ratio (apple: 45,455 images vs carrot: 402). With a 10% test split, carrot yields ~40 test samples, where a single misclassification shifts F1 by 2.5 percentage points. At 15%, it yields 61 samples, reducing that shift to 1.6 points.
 
-The dataset has a **113:1 imbalance ratio** — apple accounts for 45,455 images while carrot has only 402. With a 10% test split, the carrot class yields approximately 40 test samples. With a 15% split, it yields 61. This matters because with 40 samples, a single misclassification shifts the F1 score by 2.5 percentage points, making per-class metrics unreliable. With 61 samples, the same misclassification shifts by 1.6 points — a more stable signal.
+The same reasoning applies to the validation set. Early stopping, learning rate reduction, and model checkpointing all monitor validation accuracy. Noisy validation signals from too few samples cause premature early stopping.
 
-The same logic applies to the validation set. The early stopping, learning rate reduction, and model checkpoint callbacks all monitor validation accuracy. If the validation set is too small, the signal becomes noisy and early stopping may fire prematurely. With 18,119 validation images, even the smallest class has enough representation to produce stable callback signals.
+After splitting, all hashes were checked for cross-split overlap. **Zero duplicates found.**
 
-The cost — losing 5% of training data compared to 80/10/10 — is negligible at this scale. Moving from ~96,000 to ~84,000 training images does not meaningfully affect convergence in models of this capacity (Goodfellow et al., 2016).
+### Class Imbalance
 
-### Split Verification
-
-After splitting, every hash in the training, validation, and test sets was checked for overlap. **Zero cross-split duplicates were found**, confirming no data leakage. The stratified split preserved class proportions across all three sets.
-
-### Class Imbalance Mitigation
-
-Balanced class weights were computed from the training set distribution using scikit-learn's `compute_class_weight` and saved to `class_weights.csv`. These weights were applied during all three model training runs to ensure minority classes receive appropriate loss amplification without over-sampling artefacts.
+Balanced class weights were computed with scikit-learn's `compute_class_weight` and applied during all training runs.
 
 | Property | Value |
 |---|---|
-| Original images | 163,316 |
-| After deduplication | 120,842 |
-| Train | 84,582 (70%) |
-| Validation | 18,119 (15%) |
-| Test | 18,141 (15%) |
+| Train set | 84,582 (70%) |
+| Validation set | 18,119 (15%) |
+| Test set | 18,141 (15%) |
 | Class imbalance ratio | 113:1 |
-| Image size | 224×224 RGB |
+| Image size | 224x224 RGB |
 
----
+## Architecture Selection
 
-## Step 3 — Architecture Selection
+```mermaid
+flowchart LR
+    subgraph Baseline
+        A["Custom CNN\nFrom scratch"]
+    end
+    subgraph Transfer Learning
+        B["EfficientNetB0\nCompound scaling"]
+        C["ResNet-50\nResidual connections"]
+    end
+    A --> D["Compare under\nidentical conditions"]
+    B --> D
+    C --> D
+```
 
-*Motivation for choosing these three specific architectures:*
+**Custom CNN (baseline):** Every transfer learning comparison needs a from-scratch baseline. Without it, the question "does transfer learning actually help for this task?" cannot be answered.
 
-**Custom CNN (baseline)** — Every transfer learning study needs a from-scratch baseline. Without it, the question "does transfer learning actually help for this specific task?" cannot be answered. If EfficientNetB0 and ResNet-50 only beat each other by 0.02%, that result alone is not particularly informative. The fact that both pretrained models outperform the from-scratch model by ~1.4–1.8% is the result that gives the comparison its meaning.
+**EfficientNetB0:** Compound scaling with depthwise separable convolutions. Maximises accuracy per parameter. The smallest variant in the family, directly relevant for mobile deployment in Experiment 3.
 
-**EfficientNetB0** — Represents the modern parameter-efficient paradigm. Tan & Le (2019) introduced compound scaling — simultaneously scaling network depth, width, and input resolution by a fixed ratio — and depthwise separable convolutions to maximise accuracy per parameter. EfficientNetB0 is the smallest variant in the family, which makes it directly relevant for mobile and edge deployment (a key consideration for Experiment 3).
+**ResNet-50:** Residual connections solving vanishing gradients in deep networks. The most cited backbone in computer vision and the standard benchmark architecture.
 
-**ResNet-50** — Represents the established deep residual paradigm. He et al. (2016) introduced residual connections to solve the vanishing gradient problem in very deep networks. ResNet-50 is the most widely cited backbone in computer vision research and serves as the canonical benchmark architecture.
+The structure is deliberate: from-scratch baseline vs. efficient modern architecture vs. established heavyweight.
 
-The comparison structure is deliberate: **from-scratch baseline vs. efficient modern architecture vs. established heavyweight.**
+## Training Protocol
 
----
-
-## Step 4 — Training Protocol
-
-To ensure a fair comparison, all models were trained under an identical protocol wherever architecture permitted. The following settings were fixed across all three runs:
+All models were trained under identical settings wherever architecture permitted.
 
 | Setting | Value |
 |---|---|
 | Hardware | Tesla T4 (Google Colab) |
-| Dataset | Identical split (SHA-256 verified, zero leakage) |
-| Image size | 224×224 RGB |
+| Dataset | Same split, SHA-256 verified, zero leakage |
+| Image size | 224x224 RGB |
 | Batch size | 32 |
 | Max epochs | 100 |
 | Early stopping patience | 15 epochs |
-| LR reduction factor | 0.5 (patience = 5, min = 1e-7) |
-| Class weights | Applied uniformly |
+| LR reduction | factor 0.5, patience 5, min 1e-7 |
+| Class weights | Applied |
 | Random seed | 42 |
+| Augmentation | rotation +/-20, shifts/shear/zoom 10%, horizontal flip |
 
-**Data augmentation** (training set only): random rotation ±20°, width/height shifts 10%, shear 10%, zoom 10%, horizontal flip.
+### Two-Phase Fine-Tuning
 
-### Why 100 Epochs and Patience 15?
+```mermaid
+flowchart LR
+    P1["Phase 1\n10 epochs\nBackbone frozen\nLR = 0.001"] --> T["Transition\nValidation dip\n(expected)"]
+    T --> P2["Phase 2\nRemaining epochs\nTop layers unfrozen\nLR = 0.0001"]
+```
 
-This requires explanation because an earlier version of this experiment used 50 epochs and patience 5 — settings that were inadequate.
+Both transfer learning models use a two-phase procedure. Phase 1 freezes the pretrained backbone and trains only the classification head. Phase 2 unfreezes a portion of the backbone at a reduced learning rate.
 
-Both EfficientNetB0 and ResNet-50 use a two-phase training procedure: Phase 1 freezes the pretrained backbone and trains only the classification head for 10 epochs; Phase 2 unfreezes a portion of the backbone and continues with a reduced learning rate. At the Phase 1 → Phase 2 transition, millions of previously frozen parameters suddenly begin receiving gradient updates. The model temporarily destabilises — validation accuracy drops and loss spikes — before recovering as the newly active weights settle into the task (Yosinski et al., 2014; Lee et al., 2022).
+At the Phase 1 to Phase 2 transition, millions of previously frozen parameters begin receiving gradient updates. Validation accuracy temporarily drops before recovering as the newly active weights adapt to the task. Patience 15 was set specifically to accommodate this transition.
 
-With patience 5, early stopping would detect that spike, count five epochs of no improvement, and terminate training before the model has had a chance to recover. The result is a model that stops learning precisely at the moment its pretrained features are beginning to be refined for the target domain. Patience 15 gives the model the room it needs to survive the transition, plateau, and then improve again. The 100-epoch ceiling is a generous upper bound — the real control mechanism is early stopping, not the ceiling.
+### Learning Rate Reduction at Phase 2
 
-### Learning Rate Differences
+The Phase 2 learning rate drops from 0.001 to 0.0001 to prevent catastrophic forgetting. Pretrained weights already encode useful ImageNet representations. A full 0.001 learning rate would overwrite those representations within a few updates. The Custom CNN has no pretrained weights to protect, so a higher learning rate throughout is both safe and beneficial.
 
-The initial learning rate is 0.001 for all models. However, at Phase 2 of the transfer learning models, it drops to 0.0001.
-
-This is not an inconsistency — it is a deliberate safeguard against **catastrophic forgetting** (French, 1999). When a pretrained backbone is unfrozen, its weights already encode useful representations learned from millions of ImageNet images. Applying the full 0.001 learning rate to those weights produces gradients large enough to overwrite those representations in a handful of updates. Reducing to 0.0001 allows the pretrained weights to be gently refined toward the target domain rather than re-initialised.
-
-The Custom CNN has no pretrained weights to protect. Everything starts from random initialisation, so a higher learning rate is not only safe but beneficial — the weights need to move aggressively from random to useful (Goodfellow et al., 2016).
-
----
-
-## Step 5 — Model Architectures
+## Model Architectures
 
 ### Custom CNN
 
 *Notebook: `03_custom_cnn_training.ipynb`*
 
-A VGG-style architecture built entirely from scratch. Four convolutional blocks with progressively increasing filter depths (64 → 128 → 256 → 512), each containing two Conv2D layers followed by Batch Normalisation and MaxPooling. GlobalAveragePooling2D replaces Flatten to reduce parameter count while preserving spatial feature summaries. The classification head uses Dense(512) + Batch Norm + ReLU + Dropout(0.5) before the 14-class softmax output.
+```mermaid
+flowchart TB
+    I["Input 224x224 RGB"] --> B1
+    subgraph B1 ["Block 1"]
+        direction LR
+        B1a["2x Conv(64)\n+ BN + ReLU"] --> B1b["MaxPool"]
+    end
+    B1 --> B2
+    subgraph B2 ["Block 2"]
+        direction LR
+        B2a["2x Conv(128)\n+ BN + ReLU"] --> B2b["MaxPool"]
+    end
+    B2 --> B3
+    subgraph B3 ["Block 3"]
+        direction LR
+        B3a["2x Conv(256)\n+ BN + ReLU"] --> B3b["MaxPool"]
+    end
+    B3 --> B4
+    subgraph B4 ["Block 4"]
+        direction LR
+        B4a["2x Conv(512)\n+ BN + ReLU"] --> B4b["MaxPool"]
+    end
+    B4 --> GAP["GlobalAvgPool"]
+    GAP --> D["Dense(512) + BN\n+ ReLU + Dropout(0.5)"]
+    D --> O["Dense(14) + Softmax"]
+```
+
+VGG-style architecture. Four convolutional blocks with increasing filter depth (64, 128, 256, 512). GlobalAveragePooling replaces Flatten to reduce parameters while preserving spatial information.
 
 | Property | Value |
 |---|---|
 | Total parameters | 4,964,942 |
-| Model file size | 56.92 MB |
-| Input | 224×224 RGB |
+| Model size | 56.92 MB |
 | Pretrained | No |
 
 ### EfficientNetB0
 
 *Notebook: `04_efficientnet_training.ipynb`*
 
-EfficientNetB0 pretrained on ImageNet, adapted with a lightweight classification head: GlobalAveragePooling2D → Batch Norm → Dropout(0.3) → Dense(14, softmax). No intermediate dense layers — EfficientNet's compound-scaled feature extraction is expressive enough that a direct projection head suffices.
+EfficientNetB0 pretrained on ImageNet with a lightweight classification head. No intermediate dense layers: EfficientNet's compound-scaled features are expressive enough for a direct projection.
 
-**Fine-tuning depth: top 30% of the base (72 of 238 layers unfrozen at Phase 2).**
-
-EfficientNetB0's depthwise separable convolutions are parameter-efficient: unfreezing 30% exposes ~3.1M trainable parameters. This percentage is higher than ResNet-50's 20% because EfficientNet's architecture couples features more tightly across layers through its compound scaling, making deeper adaptation beneficial. The selected percentage follows established fine-tuning practice (Tan & Le, 2019; Keras Transfer Learning Guide).
+**Fine-tuning depth:** 72 of 238 layers unfrozen at Phase 2 (30%). EfficientNetB0's depthwise separable convolutions are parameter-efficient, so unfreezing 30% exposes only ~3.1M trainable parameters.
 
 | Property | Value |
 |---|---|
 | Total parameters | 4,072,625 |
-| Model file size | 40.03 MB |
+| Model size | 40.03 MB |
 | Phase 1 trainable | 20,494 (0.08%) |
 | Phase 2 trainable | 3,099,626 (76.1%) |
-| Layers unfrozen (Phase 2) | 72 of 238 (30%) |
+| Layers unfrozen | 72 / 238 (30%) |
 | Pretrained | ImageNet |
 
 ### ResNet-50
 
 *Notebook: `05_resnet50_training.ipynb`*
 
-ResNet-50 pretrained on ImageNet, adapted with a deeper classification head than EfficientNetB0 to match its larger backbone capacity: GlobalAveragePooling2D → Batch Norm → Dropout(0.3) → Dense(256) → Batch Norm → Dropout(0.3) → Dense(14, softmax). The intermediate Dense(256) layer provides a bottleneck appropriate for a 24M-parameter backbone.
+ResNet-50 pretrained on ImageNet with a deeper classification head (Dense(256) bottleneck) to match its larger backbone capacity.
 
-**Fine-tuning depth: top 20% of the base (35 of 175 layers unfrozen at Phase 2).**
-
-ResNet-50 uses standard convolutions with high parameter density per layer. Unfreezing 20% exposes ~15.5M trainable parameters — already five times more than EfficientNetB0's 30% unfreeze. A more conservative percentage preserves the low-level ImageNet representations in the early layers, which transfer broadly across vision tasks and do not need domain-specific refinement (Yosinski et al., 2014).
+**Fine-tuning depth:** 35 of 175 layers unfrozen at Phase 2 (20%). ResNet-50 uses standard convolutions with high parameter density per layer. Unfreezing 20% already exposes ~15.5M trainable parameters, five times more than EfficientNetB0's 30%.
 
 | Property | Value |
 |---|---|
 | Total parameters | 24,125,070 |
-| Model file size | 211.03 MB |
+| Model size | 211.03 MB |
 | Phase 1 trainable | 532,750 (2.2%) |
 | Phase 2 trainable | 15,510,798 (64.3%) |
-| Layers unfrozen (Phase 2) | 35 of 175 (20%) |
+| Layers unfrozen | 35 / 175 (20%) |
 | Pretrained | ImageNet |
 
----
+## Detailed Results
 
-## Results
+*Notebook: `06_model_comparison.ipynb`*
 
 ### Overall Performance
 
@@ -271,46 +276,43 @@ ResNet-50 uses standard convolutions with high parameter density per layer. Unfr
 | Macro Precision | 0.9746 | 0.9977 | 0.9974 |
 | Macro Recall | 0.9911 | 0.9968 | 0.9973 |
 | Macro F1 | 0.9823 | 0.9972 | **0.9973** |
-| Total Epochs | 81 | 42 | 32 |
-| Best Epoch | 60 | 40 | 28 |
-| Training Time | ~24.8 h | 10.96 h | 8.13 h |
 
-### Statistical Significance (Wilson Score 95% CI)
+### Statistical Significance
 
-With 18,141 test samples, accuracy confidence intervals are tight:
+Wilson score 95% confidence intervals on 18,141 test samples:
 
-| Model | Accuracy | 95% CI (Wilson) |
+| Model | Accuracy | 95% CI |
 |---|---|---|
 | Custom CNN | 98.34% | [98.14%, 98.52%] |
 | EfficientNetB0 | 99.75% | [99.67%, 99.81%] |
 | ResNet-50 | 99.77% | [99.69%, 99.83%] |
 
-**Custom CNN vs. transfer models:** Non-overlapping confidence intervals. The ~1.4–1.8% gap is statistically significant.
+Custom CNN vs. transfer models: non-overlapping intervals. The gap (~1.4 to 1.8%) is statistically significant.
 
-**EfficientNetB0 vs. ResNet-50:** Overlapping confidence intervals. The 0.02% difference is within statistical noise and should not be used to favour one model over the other on accuracy grounds alone (Agresti & Coull, 1998).
+EfficientNetB0 vs. ResNet-50: overlapping intervals. The 0.02% difference is within statistical noise.
 
 ### Per-Class F1 Scores
 
 | Class | Custom CNN | EfficientNetB0 | ResNet-50 |
 |---|---|---|---|
 | apple | 0.9825 | 0.9973 | 0.9977 |
-| **banana** | **0.9070** | 0.9865 | 0.9904 |
-| bell\_pepper\_green | 1.0000 | 1.0000 | 1.0000 |
-| bell\_pepper\_red | 1.0000 | 1.0000 | 1.0000 |
+| banana | 0.9070 | 0.9865 | 0.9904 |
+| bell_pepper_green | 1.0000 | 1.0000 | 1.0000 |
+| bell_pepper_red | 1.0000 | 1.0000 | 1.0000 |
 | carrot | 1.0000 | 1.0000 | 1.0000 |
 | cucumber | 0.9998 | 1.0000 | 1.0000 |
-| **grape** | **0.9359** | 0.9888 | 0.9893 |
+| grape | 0.9359 | 0.9888 | 0.9893 |
 | lemon | 1.0000 | 1.0000 | 1.0000 |
 | onion | 1.0000 | 1.0000 | 1.0000 |
 | orange | 1.0000 | 1.0000 | 1.0000 |
 | peach | 1.0000 | 1.0000 | 1.0000 |
 | potato | 1.0000 | 1.0000 | 1.0000 |
-| **strawberry** | **0.9272** | 0.9888 | 0.9852 |
+| strawberry | 0.9272 | 0.9888 | 0.9852 |
 | tomato | 1.0000 | 1.0000 | 1.0000 |
 
-Ten of fourteen classes achieve F1 = 1.000 across all three architectures. The differentiation lives in three visually similar classes: banana, grape, and strawberry.
+10 of 14 classes achieve F1 = 1.000 across all three models. The differentiation sits in three visually similar classes: banana, grape, and strawberry.
 
-### Efficiency Trade-offs
+### Efficiency
 
 | Metric | Custom CNN | EfficientNetB0 | ResNet-50 |
 |---|---|---|---|
@@ -319,87 +321,69 @@ Ten of fourteen classes achieve F1 = 1.000 across all three architectures. The d
 | Single-image inference | **64.97 ms** | 68.70 ms | 68.23 ms |
 | Batch inference (per image) | **7.09 ms** | 14.10 ms | 10.10 ms |
 
-All three models have comparable single-image inference latency (~65–69 ms), meaning inference speed alone does not distinguish them at deployment time. Model size is a more meaningful differentiator, particularly for Experiment 3's mobile/edge deployment context.
+Single-image inference is comparable across all three (~65 to 69 ms). Model size is a more meaningful differentiator for deployment.
 
----
-
-## Analysis and Discussion
+## Analysis
 
 ### Why Transfer Learning Wins
 
-The Custom CNN reaches 98.34% overall, which on its own is an impressive result for a model trained from scratch on 84,582 images. But the per-class breakdown reveals where it struggles: banana (F1 = 0.907), strawberry (F1 = 0.927), and grape (F1 = 0.936) all show low precision with high recall. The pattern is consistent — the model learns to recall those classes well but generates false positives by misclassifying visually similar items as banana, strawberry, or grape.
+The Custom CNN reaches 98.34%, which is strong for a from-scratch model. But the per-class breakdown reveals the problem: banana (0.907), strawberry (0.927), and grape (0.936) all show low precision with high recall. The model recalls those classes well but generates false positives by confusing visually similar items.
 
-The underlying reason is the nature of the features available to a from-scratch model. At 84K training images, the Custom CNN develops robust representations for colour and gross shape, but lacks the fine-grained texture and surface-detail features needed to cleanly separate, for instance, red grapes from certain apple varieties, or green grapes from bell peppers of similar colour and form. These distinctions require richer representations than the dataset alone can furnish.
+The root cause is feature depth. At 84K training images, the Custom CNN develops robust colour and shape representations but lacks the fine-grained texture and surface features needed to separate, for instance, red grapes from certain apple varieties. Both transfer learning models fix this immediately, jumping above 0.985 F1 on all three weak classes. ImageNet pretraining provides exactly the low- and mid-level feature vocabulary (edge directions, texture gradients, surface normals) that the Custom CNN cannot fully acquire from this dataset alone.
 
-Both transfer learning models resolve this immediately — their F1 scores on all three weak classes jump above 0.985. ImageNet pretraining provides exactly the low- and mid-level feature vocabulary (edge directions, texture gradients, surface normals) that the Custom CNN has to learn from scratch and does not fully acquire.
+### Training Curves
 
-### Understanding the Training Curves
+**Transfer models:** Both show a validation dip at the Phase 1 to Phase 2 transition (epoch 10 to 11). This is the expected result of unfreezing millions of frozen parameters. The model temporarily destabilises before the lower learning rate guides it back to stability. Patience 15 accommodates this.
 
-**EfficientNetB0 and ResNet-50** both show a characteristic dip in validation metrics at the Phase 1 → Phase 2 transition (epoch 10–11). This is the direct consequence of unfreezing previously frozen weights: millions of parameters suddenly become active, temporarily destabilising the model's learned representations before the lower learning rate guides them back to a stable, task-adapted configuration. This is a known and expected behaviour in two-phase fine-tuning (Yosinski et al., 2014; Lee et al., 2022). Patience 15 was set specifically to accommodate this.
+**Custom CNN:** Shows volatile validation oscillations between epochs 5 and 25. Training from scratch with 113:1 class imbalance and class weights means a single minority-heavy batch can spike the weighted loss. After epoch 30, representations stabilise and convergence becomes steady.
 
-**Custom CNN** shows volatile oscillations in the validation metrics between epochs 5 and 25. Training from scratch with a 113:1 class imbalance and corresponding class weights means that a single bad batch heavily populated by minority-class samples can spike the weighted loss dramatically. The model has not yet built stable intermediate representations, so it reacts strongly to each outlier batch. After epoch 30, as the feature representations mature and stabilise, the curves smooth out and convergence becomes steady.
+### Convergence
 
-### The Convergence Efficiency Gap
-
-Beyond final accuracy, the training efficiency picture is stark. ResNet-50 converges in 32 total epochs; EfficientNetB0 in 42; Custom CNN requires 81 — more than twice as long as ResNet-50 and nearly double EfficientNetB0. This reflects the advantage of starting from a pre-adapted feature space rather than random initialisation.
-
----
+ResNet-50 converges in 32 epochs, EfficientNetB0 in 42, Custom CNN in 81. Starting from a pre-adapted feature space rather than random initialisation cuts training time by more than half.
 
 ## Model Selection for Experiment 2
 
-The selection criterion for Experiment 2 is explicitly stated as the optimal accuracy-efficiency trade-off, not the raw accuracy maximum.
+The selection criterion is the best accuracy-to-efficiency trade-off, not the raw accuracy maximum.
 
-ResNet-50 achieves 99.77% — 0.02% above EfficientNetB0's 99.75%. With 18,141 test samples, the Wilson 95% confidence intervals for both models overlap completely. This 0.02% difference is within statistical noise and cannot be used to meaningfully prefer ResNet-50 on accuracy grounds (Agresti & Coull, 1998; Goodfellow et al., 2016, Chapter 5.3).
+ResNet-50 leads by 0.02%. The Wilson 95% confidence intervals overlap completely. This difference is not statistically significant.
 
-When accuracy is statistically indistinguishable, the remaining criteria are deployment-relevant:
-
-| Criterion | EfficientNetB0 | ResNet-50 | Winner |
+| Criterion | EfficientNetB0 | ResNet-50 | Advantage |
 |---|---|---|---|
-| Model size | 40.0 MB | 211.0 MB | EfficientNetB0 (5.3×) |
-| Parameters | 4.07M | 24.13M | EfficientNetB0 (5.9×) |
-| Training time | 10.96 h | 8.13 h | ResNet-50 (1.3×) |
+| Model size | 40.0 MB | 211.0 MB | EfficientNetB0 (5.3x) |
+| Parameters | 4.07M | 24.13M | EfficientNetB0 (5.9x) |
+| Training time | 10.96 h | 8.13 h | ResNet-50 (1.3x) |
 | Inference latency | 68.70 ms | 68.23 ms | Comparable |
 
-In Experiment 2's Pipeline C (YOLO + CNN), the classifier runs once per bounding box crop. An image containing eight fruits produces eight CNN invocations. Deploying a 211 MB model in that loop — versus a 40 MB model with effectively identical classification performance — is not justifiable. The 5.3× size advantage and 5.9× parameter advantage compound with every inference call. On mobile or edge hardware (relevant for Experiment 3), the distinction is more pronounced still.
-
-EfficientNetB0's design rationale reinforces this choice directly: Tan & Le (2019) demonstrate that compound scaling achieves comparable accuracy to ResNet-50 at a fraction of the parameters — a finding this experiment reproduces on a domain-specific dataset.
+In Experiment 2's Pipeline C (YOLO + CNN), the classifier runs once per bounding-box crop. An image with eight fruits produces eight CNN calls. Deploying a 211 MB model in that loop instead of a 40 MB model with equivalent accuracy is not justified. On mobile or edge hardware (Experiment 3), this gap widens further.
 
 **EfficientNetB0 is selected as the classifier for Experiment 2.**
 
----
+## Limitations
 
-## Limitations and Threats to Validity
+**Studio-quality images.** The source datasets use controlled backgrounds and lighting. In real-world conditions (variable lighting, partial occlusion, textured backgrounds), the gap between the Custom CNN and transfer models may be larger.
 
-**Dataset ceiling effect.** The Fruits-360 and related sources use studio-quality images against plain backgrounds. This controlled environment compresses the performance differences between architectures — in real-world deployment, where produce appears under variable lighting, partial occlusion, and textured backgrounds, the gap between the Custom CNN and transfer learning models may be larger.
+**Single data split.** Five-fold cross-validation would produce more robust variance estimates but would require ~150+ GPU hours across three models. A single large test set (n = 18,141) with Wilson confidence intervals partially compensates, but variance across splits remains unknown.
 
-**Single data split.** Ideally, k-fold cross-validation (k = 5) would be used to produce robust variance estimates. However, five-fold cross-validation on this dataset across three models would require approximately 150+ GPU hours. Given compute constraints, a single large test split (n = 18,141) was used instead. The Wilson confidence intervals are tight, which partially compensates, but variance across splits remains unknown.
+**Custom CNN training time.** The training session was interrupted and resumed from a checkpoint. The ~24.8 hour total is an extrapolation from recorded session durations, with roughly +/-10% uncertainty.
 
-**Training time estimation for Custom CNN.** The Custom CNN training session was interrupted and resumed from a checkpoint. The total training time (~24.8 hours) is an extrapolation from recorded session durations. The ±10% variance should be noted when comparing training efficiency.
+**Fine-tuning depth.** EfficientNetB0 unfreezes 30%; ResNet-50 unfreezes 20%. These follow established guidelines for each architecture and were not exhaustively searched.
 
-**Fine-tuning depth.** EfficientNetB0 unfreezes 30% of its base; ResNet-50 unfreezes 20%. These percentages follow established guidelines for their respective architectures and were not found via exhaustive search. Different unfreeze depths may yield modestly different results, though the pretrained feature quality is robust to these choices within a reasonable range.
-
-**Inference benchmarking.** Inference times were measured on Colab instances, which are subject to variable load and thermal conditions. The reported latencies (~65–69 ms) should be treated as relative comparisons between architectures, not as absolute deployment benchmarks.
-
----
+**Inference benchmarks.** Measured on Colab instances subject to variable load. Reported latencies should be treated as relative comparisons, not absolute deployment numbers.
 
 ## How to Reproduce
 
-All notebooks are designed to run on Google Colab with a GPU runtime. Select **Tesla T4** for consistency with the reported results.
+All notebooks run on Google Colab. Select **Tesla T4** for consistency.
 
-Run notebooks in order:
-
-| Step | Notebook | What it does | Outputs |
+| Step | Notebook | Purpose | Outputs |
 |---|---|---|---|
-| 1 | `01_hardware_accelerator_benchmark.ipynb` | Benchmarks T4/L4/A100/CPU and justifies hardware selection | Benchmark table |
-| 2 | `02_dataset_preparation.ipynb` | Downloads, maps, deduplicates, and splits the dataset | `snapshelf_dataset_14classes_deduped.zip`, `dataset_manifest.csv`, `class_weights.csv` |
-| 3 | `03_custom_cnn_training.ipynb` | Trains the Custom VGG-style CNN from scratch | Saved model, training history |
-| 4 | `04_efficientnet_training.ipynb` | Fine-tunes EfficientNetB0 (two-phase) | Saved model, training history |
-| 5 | `05_resnet50_training.ipynb` | Fine-tunes ResNet-50 (two-phase) | Saved model, training history |
-| 6 | `06_model_comparison.ipynb` | Statistical comparison, per-class analysis, model selection | Comparison CSVs, visualisations |
+| 1 | `01_hardware_accelerator_benchmark.ipynb` | GPU selection | Benchmark table |
+| 2 | `02_dataset_preparation.ipynb` | Download, deduplicate, split | Dataset zip, manifest, class weights |
+| 3 | `03_custom_cnn_training.ipynb` | Train Custom CNN | Saved model, training history |
+| 4 | `04_efficientnet_training.ipynb` | Fine-tune EfficientNetB0 | Saved model, training history |
+| 5 | `05_resnet50_training.ipynb` | Fine-tune ResNet-50 | Saved model, training history |
+| 6 | `06_model_comparison.ipynb` | Statistical comparison | Comparison CSVs, visualisations |
 
-Each notebook includes a Google Drive mount step and path configuration cell at the top. Adjust paths to match your Drive structure before running.
-
----
+Each notebook has a Drive mount and path configuration cell at the top. Adjust paths to match your Drive structure.
 
 ## Requirements
 
@@ -412,28 +396,8 @@ seaborn
 scikit-learn
 ```
 
-All dependencies are available in the standard Google Colab environment. No additional installation is required.
+All dependencies are available in the standard Colab environment.
 
 ---
 
-## References
-
-Agresti, A. & Coull, B. A. (1998). Approximate is better than "exact" for interval estimation of binomial proportions. *The American Statistician*, 52(2), 119–126.
-
-French, R. M. (1999). Catastrophic forgetting in connectionist networks. *Trends in Cognitive Sciences*, 3(4), 128–135.
-
-Goodfellow, I., Bengio, Y., & Courville, A. (2016). *Deep Learning*. MIT Press.
-
-He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. *Proceedings of the IEEE CVPR*, 770–778. arXiv:1512.03385.
-
-Lee, J. H., et al. (2022). Fine-tuning can distort pretrained features and underperform from-scratch training. *ICLR 2022*. arXiv:2202.10054.
-
-Prechelt, L. (1997). Early stopping — but when? In *Neural Networks: Tricks of the Trade*, Springer, 55–69.
-
-Tan, M. & Le, Q. V. (2019). EfficientNet: Rethinking model scaling for convolutional neural networks. *ICML 2019*. arXiv:1905.11946.
-
-Yosinski, J., Clune, J., Bengio, Y., & Lipson, H. (2014). How transferable are features in deep neural networks? *NeurIPS 2014*. arXiv:1411.1792.
-
----
-
-*Part of the SnapShelf project — MOD002691 Computing Project.*
+*MOD002691 Computing Project.*
