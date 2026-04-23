@@ -61,12 +61,12 @@ class ExperimentConfig:
     All values locked - do not modify during experiment runs.
 
     Pipelines:
-        A (vlm):      Image -> GPT-4o-mini (constrained to 14 labels) -> inventory
+        A (vlm):      Image -> GPT-5.2 (constrained to 14 labels) -> inventory
         B (yolo-14):  Image -> 14-class YOLO -> boxes + labels -> inventory
         C (yolo-cnn): Image -> 1-class objectness YOLO -> crops -> CNN -> inventory
     """
     # --- VLM Settings (Pipeline A) ---
-    vlm_model: str = "gpt-4o-mini"
+    vlm_model: str = "gpt-5.2"
     vlm_temperature: float = 0.0
     vlm_image_detail: str = "high"
     vlm_max_tokens: int = 500
