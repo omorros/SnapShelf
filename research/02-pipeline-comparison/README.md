@@ -1,5 +1,7 @@
 # Experiment 2: End-to-End Pipeline Comparison
 
+Part of the [SnapShelf research](../README.md). The winner of this experiment is the recognition model the [SnapShelf app](../../README.md) uses.
+
 **Module:** MOD002691 Computing Project
 **Task:** Compare three pipelines for 14-class fruit/vegetable inventory from photos
 **Selected pipeline:** VLM (GPT-5.2) with F1 = 0.900 on clean images
@@ -27,7 +29,7 @@ flowchart LR
 |----------|-------------|---------|
 | A (VLM) | Send image to GPT-5.2, parse structured output | API call, no local weights |
 | B (YOLO-14) | 14-class YOLOv8s detection | `yolo_14class_best.pt` (22.5 MB) |
-| C (YOLO+CNN) | 1-class objectness YOLOv8s + EfficientNetB0 classifier from [Exp 1](https://github.com/omorros/food-cv-exp1-cnn-comparison) | `yolo_objectness_best.pt` + `cnn_winner.keras` |
+| C (YOLO+CNN) | 1-class objectness YOLOv8s + EfficientNetB0 classifier from [Exp 1](../01-cnn-comparison/) | `yolo_objectness_best.pt` + `cnn_winner.keras` |
 
 ## VLM Model Selection (Pipeline A)
 
@@ -43,7 +45,9 @@ F1 difference between GPT-5.2 and Gemini is 0.004. GPT-5.2 selected for 2.4x low
 
 ## Test Data
 
-120 photos taken in a home kitchen, each annotated with YOLO-format bounding boxes and mapped to the 14 classes.
+120 photos taken in a real home on an iPhone 14 Pro Max, designed shot by shot: 5 locations x 3 difficulty tiers (2 to 8 items) x 3 camera angles, with deliberately confusable pairs such as lemon/orange and tomato/apple. 585 hand-drawn boxes across the 14 classes.
+
+The photos are published as a standalone dataset, [Kitchen Fruit & Vegetable Detection](https://huggingface.co/datasets/omorros/kitchen-fruit-vegetable-detection) on Hugging Face, with the labels in COCO and YOLO format. `scripts/download_dataset.py` fetches them into `dataset_exp2/images/`; the labels are already in `dataset_exp2/labels/`.
 
 To test robustness, three degradation conditions were generated from the same 120 originals:
 
@@ -103,6 +107,10 @@ This produces a 12-run matrix: 3 pipelines x 4 conditions (clean + 3 degradation
 | YOLO-14 | Missed detections on round/similar items | peach (0.0), potato (0.10), onion (0.24) |
 | YOLO+CNN | Inherits YOLO misses + CNN confusion on crops | potato (0.05), bell_pepper_green (0.13), apple (182 FP) |
 
+**The VLM's remaining error is a labelling convention, not vision.** All 126 of its false positives on clean
+images are grapes: the labels count one box per bunch, while the prompt asks it to count each item. Leaving
+grapes out, the VLM scores F1 0.997 on the clean set.
+
 ## Repository Structure
 
 ```
@@ -149,8 +157,11 @@ This produces a 12-run matrix: 3 pipelines x 4 conditions (clean + 3 degradation
 │   ├── yolo_14class.yaml
 │   └── yolo_objectness.yaml
 │
+├── scripts/
+│   └── download_dataset.py          # Fetches the 120 photos from Hugging Face
+│
 ├── dataset_exp2/                    # 120-image test set
-│   ├── images/                      # Clean originals
+│   ├── images/                      # Clean originals (downloaded, not in git)
 │   ├── images_d1_blur/              # Generated blur variants
 │   ├── images_d2_noise/             # Generated noise variants
 │   ├── images_d3_jpeg/              # Generated JPEG variants
@@ -179,19 +190,20 @@ This produces a 12-run matrix: 3 pipelines x 4 conditions (clean + 3 degradation
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env  # add OPENAI_API_KEY for Pipeline A
+python scripts/download_dataset.py   # the 120 test photos, from Hugging Face
+# create .env with OPENAI_API_KEY for Pipeline A (and ANTHROPIC_API_KEY, GOOGLE_API_KEY for the VLM comparison)
 ```
 
 ### 2. Training (YOLO models)
 
-Both YOLO models fine-tuned from `yolov8s.pt` (COCO pretrained) on Google Colab with NVIDIA L4. Training dataset (~19,356 train / 2,602 val images, 14 classes) sourced via [Roboflow](https://roboflow.com). Open `training/Train_YOLO_Models.ipynb` and run all cells. Alternatively:
+Both YOLO models fine-tuned from `yolov8s.pt` (COCO pretrained) on Google Colab with NVIDIA L4. Training dataset: the Roboflow Universe export "Combined Vegetables - Fruits" v8 (47 classes), remapped to the 14 classes by `training/remap_classes.py`, giving 19,356 train and 2,602 val images. It and the trained weights are not in the repo. Open `training/Train_YOLO_Models.ipynb` and run all cells. Alternatively:
 
 ```bash
 python main.py train yolo-14     # 14-class YOLO
 python main.py train yolo-obj    # objectness YOLO
 ```
 
-The CNN classifier (`cnn_winner.keras`) comes from [Experiment 1](https://github.com/omorros/food-cv-exp1-cnn-comparison).
+The CNN classifier (`cnn_winner.keras`) comes from [Experiment 1](../01-cnn-comparison/).
 
 ### 3. Run single pipeline
 
@@ -213,6 +225,20 @@ python main.py evaluate --images dataset_exp2/images --labels dataset_exp2/label
 python -m evaluation.generate_degradations
 python -m evaluation.generate_charts
 ```
+
+## Limitations
+
+- **A small test set:** 120 photos, one home, one phone, one afternoon. The VLM vs YOLO gap is large
+  enough to survive that; GPT-5.2 vs Gemini (0.004 F1) is not.
+- **An undertrained YOLO baseline:** validation mAP50 was 0.585 and training never converged; peach had
+  only 29 validation instances, which matches its F1 of 0.00 here. A fairer baseline would fine-tune on
+  a small in-domain set.
+- **Degradations at full resolution:** blur and noise are applied to the 12 MP photo before each model
+  downsizes it, which likely explains YOLO improving on blurred images.
+- **Latency includes overheads:** decoding multi-MB files and, for the VLM, the upload, on undocumented
+  hardware.
+- **Counting, not localisation:** the metric compares per-class counts, which suits an inventory app but
+  ignores where the boxes are. The `*_confusion.png` figures only fill the diagonal for the same reason.
 
 ## Configuration
 

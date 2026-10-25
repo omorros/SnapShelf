@@ -1,5 +1,7 @@
 # Experiment 1: CNN Architecture Comparison
 
+Part of the [SnapShelf research](../README.md). This experiment picks the image classifier that [Experiment 2](../02-pipeline-comparison/) uses inside its YOLO + CNN pipeline.
+
 **Module:** MOD002691 Computing Project
 **Task:** Classify 14 produce classes across 120,842 images
 **Selected model:** EfficientNetB0 (99.75% accuracy, 40 MB)
@@ -18,6 +20,7 @@ EfficientNetB0 and ResNet-50 differ by 0.02% (Wilson 95% CIs overlap). Efficient
 
 ```
 .
+├── figures/                     # exported from the notebook outputs
 ├── notebooks/
 │   ├── 01_hardware_accelerator_benchmark.ipynb
 │   ├── 02_dataset_preparation.ipynb
@@ -28,9 +31,9 @@ EfficientNetB0 and ResNet-50 differ by 0.02% (Wilson 95% CIs overlap). Efficient
 └── README.md
 ```
 
-Run notebooks in order. Each depends on outputs from the previous one. Designed for Google Colab with T4 GPU.
+Run `02` first: it builds the dataset zip every other notebook reads. Then `01` (hardware benchmark), `03` to `05` (training) and `06` (comparison). Designed for Google Colab with a T4 GPU.
 
-> Prior versions preserved on `archive` branch under `v1/` and `v2/`.
+Earlier versions of the study (v1 without deduplication, v2 with a shorter training budget) are in this folder's git history.
 
 ## Hardware Selection
 
@@ -68,7 +71,9 @@ flowchart LR
 | Classes | apple, banana, bell_pepper_green, bell_pepper_red, carrot, cucumber, grape, lemon, onion, orange, peach, potato, strawberry, tomato |
 | Class imbalance | 113:1 (apple vs carrot), handled with balanced class weights |
 | Image size | 224x224 RGB |
-| Cross-split leakage | 0 |
+| Cross-split leakage | 0 exact duplicates |
+
+![Images per class after deduplication](figures/class-distribution.png)
 
 ## Training Protocol
 
@@ -121,6 +126,8 @@ Phase 2 unfreezes 72/238 layers (30%) = 3.1M trainable parameters.
 
 4,072,625 parameters | 40.03 MB
 
+![EfficientNetB0 accuracy and loss over 42 epochs, with the switch to fine-tuning after epoch 10](figures/efficientnet-training-curves.png)
+
 ### ResNet-50
 
 *Notebook: `05_resnet50_training.ipynb`*
@@ -164,7 +171,17 @@ EfficientNetB0 vs ResNet-50: overlapping (not significant).
 | strawberry | 0.9272 | 0.9888 | 0.9852 |
 | tomato | 1.0000 | 1.0000 | 1.0000 |
 
-10/14 classes at F1 = 1.000 across all models. Differentiation in banana, grape, strawberry.
+9 of 14 classes are perfect (F1 = 1.000) for all three models, and 10 for the two transfer-learning models.
+Every remaining error sits in apple, banana, grape and strawberry.
+
+![Per-class F1 for the three models](figures/per-class-f1-heatmap.png)
+
+In error counts on the 18,141 test images: Custom CNN 301, EfficientNetB0 46, ResNet-50 42.
+The Custom CNN's errors are mostly apples predicted as banana, grape or strawberry:
+
+| Custom CNN | EfficientNetB0 |
+|---|---|
+| ![Custom CNN confusion matrix](figures/custom-cnn-confusion-matrix.png) | ![EfficientNetB0 confusion matrix](figures/efficientnet-confusion-matrix.png) |
 
 ### Efficiency
 
@@ -192,12 +209,31 @@ All notebooks run on Google Colab with Tesla T4.
 
 | Step | Notebook | Outputs |
 |---|---|---|
-| 1 | `01_hardware_accelerator_benchmark.ipynb` | Benchmark table |
-| 2 | `02_dataset_preparation.ipynb` | Dataset zip, manifest, class weights |
+| 1 | `02_dataset_preparation.ipynb` | Dataset zip, manifest, class weights |
+| 2 | `01_hardware_accelerator_benchmark.ipynb` | Benchmark table |
 | 3 | `03_custom_cnn_training.ipynb` | Saved model, training history |
 | 4 | `04_efficientnet_training.ipynb` | Saved model, training history |
 | 5 | `05_resnet50_training.ipynb` | Saved model, training history |
 | 6 | `06_model_comparison.ipynb` | Comparison CSVs, visualisations |
+
+## Limitations
+
+The 99.7% is real, but it is measured on easy data, and the dissertation says so:
+
+- **Studio-style images with near-duplicates.** 87% of the images come from Fruits-360, which is
+  video frames of single fruits rotating on a white background. The split is random per image and
+  SHA-256 only removes byte-identical copies, so test frames are close neighbours of training frames.
+- **A ceiling effect.** Most classes are perfect for every model, so the comparison rests on four
+  classes and a few dozen images. EfficientNetB0 and ResNet-50 differ by 4 errors on one split and
+  one seed.
+- **Timing is approximate.** Single-image latency is dominated by Keras `predict()` overhead, so
+  all three models read about 65 to 69 ms. The Custom CNN run resumed after a Colab disconnect at
+  epoch 66: the evaluated checkpoint is epoch 70 and its training time is extrapolated.
+- **Weights and data are not in the repo.** They were produced on Google Drive from three Kaggle
+  datasets, which are not redistributed here.
+
+The real test came next: [Experiment 2](../02-pipeline-comparison/) ran this EfficientNetB0 on
+photos from a real kitchen, where the YOLO + EfficientNetB0 pipeline scored F1 0.547.
 
 ## Requirements
 
