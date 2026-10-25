@@ -9,6 +9,7 @@ from app.models.draft_item import DraftItem
 from app.schemas.draft_item import DraftItemResponse
 from app.services.ingestion.barcode_ingestion import barcode_ingestion_service
 from app.services.ingestion.image_ingestion import image_ingestion_service
+from app.services.ingestion.vision_client import vision_client
 
 
 router = APIRouter(prefix="/ingest", tags=["ingestion"])
@@ -147,11 +148,11 @@ async def ingest_image(
     """
     Detect food items from image and create draft items.
 
-    Uses GPT-4o Vision to analyze the image and identify food items.
+    Uses the vision model to analyze the image and identify food items.
     Creates a DraftItem for each detected item with predicted expiry dates.
 
     Workflow:
-    1. Send image to GPT-4o Vision API
+    1. Send image to the vision model
     2. Detect food items and their categories
     3. Predict expiry dates for each item
     4. Create DraftItems for user review/confirmation
@@ -209,7 +210,7 @@ async def ingest_image(
             draft_data["expiration_date"] = item.predicted_expiry
 
         # Build notes with detection info
-        notes_parts = ["[Image detection - GPT-4o]"]
+        notes_parts = [f"[Image detection - {vision_client.model}]"]
         if item.reasoning:
             notes_parts.append(f"[{item.reasoning}]")
         if item.quantity_confidence is not None:

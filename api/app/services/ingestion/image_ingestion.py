@@ -1,20 +1,20 @@
 """
 Image-based food item detection service.
 
-Orchestrates GPT-4o vision detection with category normalization
+Orchestrates vision model detection with category normalization
 and expiry prediction to produce draft-ready item data.
 """
 from dataclasses import dataclass, field
 from typing import List, Optional
 from datetime import date
 
-from app.services.ingestion.gpt4o_vision import gpt4o_vision_client, DetectedFoodItem
+from app.services.ingestion.vision_client import vision_client, DetectedFoodItem
 from app.services.expiry_prediction import expiry_prediction_service
 
 
-# Default confidence score for GPT-4o detections
+# Default confidence score for vision model detections
 # User confirmation is the real trust gate, so we use a moderate fixed value
-GPT4O_DEFAULT_CONFIDENCE = 0.75
+VISION_DEFAULT_CONFIDENCE = 0.75
 
 
 @dataclass
@@ -56,7 +56,7 @@ class ImageIngestionService:
     Orchestrates image-based food detection.
 
     Pipeline:
-    1. Send image to GPT-4o Vision API
+    1. Send image to the vision model
     2. Normalize categories for each detected item
     3. Predict expiry dates using existing prediction service
     4. Return draft-ready data for router to persist
@@ -77,9 +77,9 @@ class ImageIngestionService:
         Returns:
             ImageIngestionResult with detected items and predictions
         """
-        # Step 1: Call GPT-4o Vision API
+        # Step 1: Call the vision model
         try:
-            raw_items = gpt4o_vision_client.detect_food_items(image_bytes)
+            raw_items = vision_client.detect_food_items(image_bytes)
         except RuntimeError as e:
             return ImageIngestionResult(
                 success=False,
@@ -119,7 +119,7 @@ class ImageIngestionService:
                     name=item.name,
                     category=normalized_category,
                     predicted_expiry=prediction.expiry_date.isoformat(),
-                    confidence_score=GPT4O_DEFAULT_CONFIDENCE,
+                    confidence_score=VISION_DEFAULT_CONFIDENCE,
                     reasoning=prediction.reasoning,
                     quantity=item.quantity,
                     unit=normalized_unit,
@@ -134,7 +134,7 @@ class ImageIngestionService:
 
     def _normalize_category(self, category: Optional[str]) -> Optional[str]:
         """
-        Normalize GPT-4o category to SnapShelf category.
+        Normalize the vision model's category to SnapShelf category.
 
         Maps to categories used by expiry prediction rules.
         """
@@ -143,7 +143,7 @@ class ImageIngestionService:
 
         category_lower = category.lower().strip()
 
-        # Direct mappings for GPT-4o categories
+        # Direct mappings for vision model categories
         # These should match the categories in our prediction rules
         category_map = {
             "dairy": "dairy",
@@ -168,7 +168,7 @@ class ImageIngestionService:
 
     def _normalize_unit(self, unit: Optional[str]) -> Optional[str]:
         """
-        Normalize and validate unit from GPT-4o.
+        Normalize and validate the unit from the vision model.
 
         Returns the normalized unit if valid, None otherwise.
         """

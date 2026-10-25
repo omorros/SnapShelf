@@ -1,16 +1,21 @@
 """
-GPT-4o Vision API client for food item detection.
+Vision model client for food item detection.
 
-Uses OpenAI's GPT-4o model to analyze images and detect food items.
+Sends a photo to an OpenAI vision model and parses the food items it finds.
+The model defaults to GPT-5.2, the one the research selected, and can be
+changed with the OPENAI_VISION_MODEL environment variable.
 """
 import base64
 import json
+import os
 from dataclasses import dataclass
 from typing import List, Optional
 
 from openai import OpenAI
 
 from app.core.config import get_openai_api_key
+
+DEFAULT_VISION_MODEL = "gpt-5.2"
 
 
 @dataclass
@@ -23,7 +28,7 @@ class DetectedFoodItem:
     quantity_confidence: Optional[float] = None  # 0.0-1.0
 
 
-# Prompt for GPT-4o to detect food items
+# Prompt for the vision model to detect food items
 DETECTION_PROMPT = """Analyze this image and identify all visible food items.
 
 For each food item you can clearly identify, provide:
@@ -79,9 +84,9 @@ Example output:
 If no food items are visible, return: {"items": []}"""
 
 
-class GPT4oVisionClient:
+class VisionClient:
     """
-    Client for GPT-4o Vision API.
+    Client for an OpenAI vision model.
 
     Handles image encoding, API calls, and response parsing
     for food item detection.
@@ -98,9 +103,14 @@ class GPT4oVisionClient:
             self._client = OpenAI(api_key=get_openai_api_key())
         return self._client
 
+    @property
+    def model(self) -> str:
+        """Vision model name, read at call time so the env var can change it."""
+        return os.getenv("OPENAI_VISION_MODEL", DEFAULT_VISION_MODEL)
+
     def detect_food_items(self, image_bytes: bytes) -> List[DetectedFoodItem]:
         """
-        Detect food items in an image using GPT-4o.
+        Detect food items in an image using the vision model.
 
         Args:
             image_bytes: Raw image bytes (JPEG, PNG, etc.)
@@ -120,7 +130,7 @@ class GPT4oVisionClient:
 
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=self.model,
                 messages=[
                     {
                         "role": "user",
@@ -137,10 +147,10 @@ class GPT4oVisionClient:
                     }
                 ],
                 response_format={"type": "json_object"},
-                max_tokens=800  # Increased to accommodate quantity fields per item
+                max_completion_tokens=800  # Increased to accommodate quantity fields per item
             )
         except Exception as e:
-            raise RuntimeError(f"GPT-4o API error: {str(e)}")
+            raise RuntimeError(f"Vision API error: {str(e)}")
 
         # Parse response
         content = response.choices[0].message.content
@@ -163,7 +173,7 @@ class GPT4oVisionClient:
                 if item.get("name")
             ]
         except json.JSONDecodeError as e:
-            raise RuntimeError(f"Failed to parse GPT-4o response: {str(e)}")
+            raise RuntimeError(f"Failed to parse vision model response: {str(e)}")
 
     def _detect_image_type(self, image_bytes: bytes) -> str:
         """
@@ -189,4 +199,4 @@ class GPT4oVisionClient:
 
 
 # Singleton instance
-gpt4o_vision_client = GPT4oVisionClient()
+vision_client = VisionClient()
