@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { api } from '../../services/api';
 import { InventoryItem, CATEGORIES } from '../../types';
 import { colors, typography, spacing, radius } from '../../theme';
@@ -187,15 +188,24 @@ export default function InventoryScreen() {
   };
 
   // --- Edit Logic ---
-  const handleEditPress = () => {
-    if (!selectedItem) return;
-    setEditName(selectedItem.name);
-    setEditCategory(selectedItem.category);
-    setEditQuantity(String(selectedItem.quantity));
-    setEditUnit(selectedItem.unit);
-    setEditExpiryDate(selectedItem.expiry_date);
+  const openEdit = (item: MergedInventoryItem) => {
+    setSelectedItem(item);
+    setEditName(item.name);
+    setEditCategory(item.category);
+    setEditQuantity(String(item.quantity));
+    setEditUnit(item.unit);
+    setEditExpiryDate(item.expiry_date);
     setShowActionModal(false);
     setShowEditModal(true);
+  };
+
+  const handleEditPress = () => {
+    if (selectedItem) openEdit(selectedItem);
+  };
+
+  const handleSwipeEdit = (item: MergedInventoryItem) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    openEdit(item);
   };
 
   const handleEditSave = async () => {
@@ -264,22 +274,31 @@ export default function InventoryScreen() {
   };
 
   // --- Deletion Logic ---
-  const handleDelete = async () => {
-    if (!selectedItem) return;
-    Alert.alert('Delete', `Delete ${selectedItem.name}?`, [
+  const confirmDelete = (item: MergedInventoryItem) => {
+    Alert.alert('Delete', `Delete ${item.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           try {
-            await Promise.all(selectedItem.mergedIds.map(id => api.deleteInventoryItem(id)));
+            await Promise.all(item.mergedIds.map(id => api.deleteInventoryItem(id)));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             fetchInventory();
             setShowActionModal(false);
           } catch (e: any) { Alert.alert('Error', e.message) }
         }
       }
     ]);
+  };
+
+  const handleDelete = () => {
+    if (selectedItem) confirmDelete(selectedItem);
+  };
+
+  const handleSwipeDelete = (item: MergedInventoryItem) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    confirmDelete(item);
   };
 
   return (
@@ -332,6 +351,8 @@ export default function InventoryScreen() {
             <InventoryItemCard
               item={item}
               onPress={handleItemPress}
+              onEdit={handleSwipeEdit}
+              onDelete={handleSwipeDelete}
               style={{ marginBottom: spacing.md }}
             />
           )}

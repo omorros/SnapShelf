@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } fr
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useCameraPermissions } from 'expo-camera';
 import { api } from '../services/api';
 import { DraftItem, InventoryItemCreate, BarcodeLookupResult } from '../types';
@@ -77,7 +78,13 @@ export default function AddItemScreen() {
     setMode('scanning');
     setLoading(true);
     try {
-      const drafts = await api.ingestImage(uri, 'fridge');
+      // Phone photos are several MB; 1024 px is plenty for the vision model and uploads fast
+      const compressed = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      const drafts = await api.ingestImage(compressed.uri, 'fridge');
       if (drafts.length === 0) {
         Alert.alert('No items detected', 'Try taking a clearer photo');
         setMode('options');

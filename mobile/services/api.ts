@@ -1,10 +1,9 @@
 import * as SecureStore from 'expo-secure-store';
 import { Token, User, DraftItem, DraftItemCreate, InventoryItem, InventoryItemCreate, InventoryItemUpdate, LoginCredentials, RegisterCredentials, BarcodeLookupResult, IngredientInput, RecipeGenerationRequest, RecipeGenerationResponse, Recipe, SavedRecipe } from '../types';
 
-// Update this to your backend URL
-// const API_BASE_URL = 'http://10.0.2.2:8000'; // Android emulator localhost
-// const API_BASE_URL = 'http://localhost:8000'; // iOS simulator
-const API_BASE_URL = 'http://172.20.10.4:8001'; // Physical device (your WiFi IP)
+// Set EXPO_PUBLIC_API_URL in mobile/.env (see .env.example).
+// On a physical phone, use your computer's LAN IP instead of localhost.
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 const TOKEN_KEY = 'auth_token';
 
