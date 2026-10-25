@@ -10,7 +10,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
-engine = create_engine(DATABASE_URL, echo=True)
+# SQL_ECHO=1 logs every statement, useful when debugging queries
+engine = create_engine(DATABASE_URL, echo=os.getenv("SQL_ECHO") == "1")
 
 SessionLocal = sessionmaker(
     autocommit=False,

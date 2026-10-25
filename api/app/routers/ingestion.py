@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List
+from datetime import date
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -115,7 +116,7 @@ async def ingest_barcode(
 
     # Add optional fields if available
     if result.predicted_expiry:
-        draft_data["expiration_date"] = result.predicted_expiry
+        draft_data["expiration_date"] = date.fromisoformat(result.predicted_expiry)
 
     if result.reasoning:
         draft_data["notes"] = f"[Barcode: {result.barcode}]\n[{result.reasoning}]"
@@ -207,7 +208,7 @@ async def ingest_image(
 
         # Add expiry prediction if available
         if item.predicted_expiry:
-            draft_data["expiration_date"] = item.predicted_expiry
+            draft_data["expiration_date"] = date.fromisoformat(item.predicted_expiry)
 
         # Build notes with detection info
         notes_parts = [f"[Image detection - {vision_client.model}]"]

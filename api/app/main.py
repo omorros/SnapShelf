@@ -4,6 +4,9 @@ from app.core.database import engine, Base
 from app.models import user, draft_item, inventory_item, saved_recipe  # noqa: F401
 from app.routers import auth, draft_items, inventory_items, expiry_prediction, ingestion, recipes
 
+# Create any missing tables on startup (there are no migrations yet)
+Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(
     title="SnapShelf Backend",
