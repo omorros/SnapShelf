@@ -13,9 +13,9 @@ cp .env.example .env      # EXPO_PUBLIC_API_URL, defaults to http://localhost:80
 npx expo start
 ```
 
-Press `i` for the iOS Simulator or `a` for an Android emulator. On a physical phone, set
-`EXPO_PUBLIC_API_URL` to your computer's LAN IP (for example `http://192.168.1.20:8000`) so the
-phone can reach the API.
+Press `i` for the iOS Simulator or `a` for an Android emulator. The Android emulator reaches
+your computer at `http://10.0.2.2:8000`, and a physical phone needs your computer's LAN IP (for
+example `http://192.168.1.20:8000`); set `EXPO_PUBLIC_API_URL` accordingly.
 
 Type-check with `npx tsc --noEmit`.
 

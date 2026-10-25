@@ -218,7 +218,7 @@ All notebooks run on Google Colab with Tesla T4.
 
 ## Limitations
 
-The 99.7% is real, but it is measured on easy data, and the dissertation says so:
+The 99.7% is real, but it is measured on easy data:
 
 - **Studio-style images with near-duplicates.** 87% of the images come from Fruits-360, which is
   video frames of single fruits rotating on a white background. The split is random per image and

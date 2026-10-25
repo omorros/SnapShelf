@@ -9,7 +9,7 @@ draft items, keeps the confirmed inventory, predicts expiry dates and suggests r
 cd api
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # then fill in the values below
+cp .env.example .env      # runs on SQLite as is; fill in the rest below
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -17,7 +17,7 @@ Tables are created on startup. Interactive docs are at `http://localhost:8000/do
 
 | Variable | What it is |
 |---|---|
-| `DATABASE_URL` | PostgreSQL URL. `sqlite:///./snapshelf.db` also works for a quick local try |
+| `DATABASE_URL` | Defaults to `sqlite:///./snapshelf.db`. Use a `postgresql://` URL for real use (driver: psycopg 3) |
 | `JWT_SECRET_KEY` | Signs login tokens. Use a long random string |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime, default 30 |
 | `OPENAI_API_KEY` | Needed for photo scanning and recipe ideas |
@@ -76,7 +76,8 @@ ingredient is marked as in the inventory, expiring soon, or missing.
 
 ## Endpoints
 
-Everything except register, login and health needs `Authorization: Bearer <token>`.
+Everything except register, login, health and the standalone expiry prediction needs
+`Authorization: Bearer <token>`.
 
 | Method | Path | What it does |
 |---|---|---|

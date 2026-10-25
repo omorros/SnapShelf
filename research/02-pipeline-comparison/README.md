@@ -45,7 +45,7 @@ F1 difference between GPT-5.2 and Gemini is 0.004. GPT-5.2 selected for 2.4x low
 
 ## Test Data
 
-120 photos taken in a real home on an iPhone 14 Pro Max, designed shot by shot: 5 locations x 3 difficulty tiers (2 to 8 items) x 3 camera angles, with deliberately confusable pairs such as lemon/orange and tomato/apple. 585 hand-drawn boxes across the 14 classes.
+120 photos taken in a real home on an iPhone 14 Pro Max, designed shot by shot: 5 locations x 3 difficulty tiers (2 to 9 items per photo) x 3 camera angles, with deliberately confusable pairs such as lemon/orange and tomato/apple. 585 hand-drawn boxes across the 14 classes.
 
 The photos are published as a standalone dataset, [Kitchen Fruit & Vegetable Detection](https://huggingface.co/datasets/omorros/kitchen-fruit-vegetable-detection) on Hugging Face, with the labels in COCO and YOLO format. `scripts/download_dataset.py` fetches them into `dataset_exp2/images/`; the labels are already in `dataset_exp2/labels/`.
 

@@ -10,14 +10,15 @@ about to go off, and suggests what to cook with it.**
 [![Expo](https://img.shields.io/badge/Expo_SDK-54-000020?logo=expo&logoColor=white)](mobile/)
 [![Dataset](https://img.shields.io/badge/%F0%9F%A4%97_Dataset-Kitchen_Fruit_%26_Vegetable_Detection-FFD21E)](https://huggingface.co/datasets/omorros/kitchen-fruit-vegetable-detection)
 
-Most food waste at home happens because people forget what they have, and inventory apps fail
+A lot of food waste at home happens because people forget what they have, and inventory apps fail
 because typing everything in is too much work. SnapShelf removes the typing: a photo, a barcode,
 or a few taps. The AI's suggestions land in a review list first, so nothing enters your inventory
 without your yes.
 
-This repo holds the app and the research behind it. Before choosing how the app should read a
-photo, I compared three computer vision pipelines on photos from a real kitchen, as my BSc
-dissertation. The winner, a vision-language model, is what the app uses.
+This repo holds the app and the research behind it. The app reads photos with a vision-language
+model, and for my BSc dissertation I put that choice to a fair test against a trained detector and
+a detector-plus-classifier pipeline, on photos from a real kitchen. The vision-language model won
+clearly, and the app runs the exact model the research selected.
 
 | | |
 |---|---|
@@ -26,8 +27,8 @@ dissertation. The winner, a vision-language model, is what the app uses.
 
 ## What it does
 
-- **Scan a photo** of your shopping or fridge. A vision model lists each item with its category,
-  quantity and a predicted expiry date.
+- **Scan a photo** of your shopping or fridge. A vision model lists each item with its category
+  and quantity, and SnapShelf predicts an expiry date for each one.
 - **Scan a barcode** and the product is looked up on Open Food Facts.
 - **Review before it counts.** Every detected item is a draft you confirm, edit or skip.
 - **See what is about to go off.** The inventory is sorted by expiry and colour-coded, with
@@ -77,8 +78,8 @@ sequenceDiagram
     API->>DB: Save as drafts (untrusted)
     API-->>App: Draft items
     You->>App: Confirm, edit or skip each one
-    App->>API: Confirm
-    API->>DB: Save as inventory (trusted)
+    App->>API: Send the items you confirmed
+    API->>DB: Save to inventory (trusted)
 ```
 
 Drafts may have missing fields and carry a confidence score. Inventory items have every field
@@ -86,7 +87,7 @@ filled in, and the only way to create one is to confirm a draft. More in the [AP
 
 ## The research
 
-Which pipeline should read the photo? I tested that before building on it.
+Which pipeline should read the photo? I put the app's choice to a fair test.
 
 ```mermaid
 flowchart LR
@@ -109,6 +110,9 @@ flowchart LR
   were grapes**: the labels count a bunch as one, the model counted berries.
 - YOLO is far faster and works offline, so it remains the right choice when there is no network.
 
+The F1 scores are from the research setting, where the model was limited to 14 produce classes.
+The app uses the same model with an open prompt, so it is not limited to fruit and vegetables.
+
 The full write-up, with research questions, figures and limitations, is in
 [**research/**](research/).
 
@@ -127,11 +131,11 @@ COCO and YOLO formats, under CC BY 4.0.
 cd api
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env      # DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY
+cp .env.example .env      # runs on SQLite as is; add OPENAI_API_KEY for photo scanning
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**App** (Node 20 or newer):
+**App** (Node 20.19.4 or newer):
 
 ```bash
 cd mobile
@@ -169,8 +173,9 @@ timeline
     Oct 2025 : SmartFoodAI, a console app with a first fruit-recognition CNN
     Nov 2025 : A shelf-life model in XGBoost, a React web app and a 14-class EfficientNet
     Dec 2025 : SnapShelf starts as a mobile-first app built around confirming AI suggestions
-    Jan 2026 : Experiment 1 compares CNNs and Experiment 2 compares pipelines
-    Feb 2026 : 120 kitchen photos shot and hand-labelled
+    Jan 2026 : The app starts reading photos with a vision-language model
+    Feb 2026 : Three CNNs trained, 120 kitchen photos shot and hand-labelled
+    Mar 2026 : Three pipelines compared under blur, noise and JPEG damage
     Apr 2026 : Dissertation submitted
     Oct 2026 : App and research merged into this repo, dataset published
 ```
