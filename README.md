@@ -1,349 +1,192 @@
+![SnapShelf](docs/images/cover.jpg)
+
 # SnapShelf
 
-> Mobile grocery tracker with fast item scanning, expiry reminders, and recipe recommendations to reduce food waste.
+**Snap a photo of your groceries and SnapShelf fills in your kitchen inventory, tells you what is
+about to go off, and suggests what to cook with it.**
 
-![Status](https://img.shields.io/badge/status-active-success.svg)
-![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)
-![React Native](https://img.shields.io/badge/React_Native-Expo-black.svg)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](api/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](api/)
+[![Expo](https://img.shields.io/badge/Expo_SDK-54-000020?logo=expo&logoColor=white)](mobile/)
+[![Dataset](https://img.shields.io/badge/%F0%9F%A4%97_Dataset-Kitchen_Fruit_%26_Vegetable_Detection-FFD21E)](https://huggingface.co/datasets/omorros/kitchen-fruit-vegetable-detection)
 
-## Overview
+Most food waste at home happens because people forget what they have, and inventory apps fail
+because typing everything in is too much work. SnapShelf removes the typing: a photo, a barcode,
+or a few taps. The AI's suggestions land in a review list first, so nothing enters your inventory
+without your yes.
 
-SnapShelf is a full-stack mobile application that helps users track their food inventory, predict expiration dates, and make informed consumption decisions to reduce food waste. The system leverages AI for intelligent food recognition and data entry while maintaining strict user control over all trusted data.
+This repo holds the app and the research behind it. Before choosing how the app should read a
+photo, I compared three computer vision pipelines on photos from a real kitchen, as my BSc
+dissertation. The winner, a vision-language model, is what the app uses.
 
-### Key Principles
+| | |
+|---|---|
+| ![Inventory sorted by expiry](docs/images/inventory.jpg) | ![A kitchen photo and the items detected in it](docs/images/scan.jpg) |
+| ![Recipe ideas from expiring food](docs/images/recipes.jpg) | ![A recipe with expiring ingredients flagged](docs/images/recipe-detail.jpg) |
 
-- **AI as Assistant, Not Authority**: All AI outputs require explicit user confirmation
-- **User Trust First**: Clear separation between AI-suggested (draft) and user-confirmed (inventory) data
-- **Backend-Driven Architecture**: All business logic resides in the API; clients remain thin
-- **Production-Ready**: Built for real-world deployment with academic rigor
+## What it does
 
-## Features
+- **Scan a photo** of your shopping or fridge. A vision model lists each item with its category,
+  quantity and a predicted expiry date.
+- **Scan a barcode** and the product is looked up on Open Food Facts.
+- **Review before it counts.** Every detected item is a draft you confirm, edit or skip.
+- **See what is about to go off.** The inventory is sorted by expiry and colour-coded, with
+  counts of expired and expiring-soon items, search and filters.
+- **Use things up.** Mark part of an item as used, swipe to edit or delete.
+- **Cook what is expiring.** Recipe ideas built around the items closest to their date, or around
+  ingredients you pick. Save the ones you like.
 
-### Intelligent Food Ingestion
-- **Barcode Scanning**: Real-time barcode detection with automatic product lookup via OpenFoodFacts API
-- **Image Recognition**: GPT-4o Vision-powered food item identification from photos
-- **Manual Entry**: Traditional form-based input for maximum control
+## How it works
 
-### Inventory Management
-- **Smart Organization**: Automatic sorting by expiration date with visual indicators
-- **Partial Consumption**: Track gradual consumption of items
-- **Category-Based Filtering**: Organized by food categories with color coding
-- **Expiry Predictions**: AI-assisted expiration date estimation with user override
-
-### Security & Authentication
-- **JWT-Based Auth**: Secure token-based authentication with 7-day expiration
-- **Password Security**: bcrypt-hashed passwords
-- **User Privacy**: Complete data isolation per user account
-
-## Tech Stack
-
-### Backend
-- **Framework**: FastAPI (Python 3.10+)
-- **Database**: PostgreSQL with SQLAlchemy ORM
-- **Authentication**: JWT tokens, bcrypt password hashing
-- **AI/ML**: OpenAI GPT-4o Vision API
-- **External APIs**: OpenFoodFacts for barcode lookup
-
-### Mobile Application
-- **Framework**: React Native with Expo SDK
-- **Navigation**: Expo Router (file-based routing)
-- **Camera**: expo-camera for barcode scanning
-- **Storage**: expo-secure-store for token management
-
-### DevOps & Testing
-- **Testing**: pytest with comprehensive test coverage
-- **API Documentation**: Auto-generated OpenAPI (Swagger) docs
-- **Development**: Hot-reload enabled for both backend and mobile
-
-## Architecture
-
-### Data Flow
-
-```
-┌─────────────────┐
-│  Mobile Client  │
-│  (React Native) │
-└────────┬────────┘
-         │ JWT Auth
-         ▼
-┌─────────────────┐
-│   FastAPI API   │
-│   (Backend)     │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌────────────┐ ┌──────────┐
-│ PostgreSQL │ │ OpenAI & │
-│     DB     │ │ External │
-│            │ │   APIs   │
-└────────────┘ └──────────┘
+```mermaid
+flowchart TB
+    APP["Expo app<br/>React Native + TypeScript"]
+    subgraph API["FastAPI backend"]
+        direction LR
+        ING["Ingestion<br/>photo and barcode"] ~~~ ITEMS["Drafts, inventory<br/>and expiry prediction"] ~~~ AUTH["Auth<br/>JWT + bcrypt"] ~~~ REC["Recipes"]
+    end
+    subgraph EXT["Data and outside services"]
+        direction LR
+        VLM["OpenAI vision model<br/>GPT-5.2"] ~~~ OFF["Open Food Facts"] ~~~ DB[("PostgreSQL")] ~~~ LLM["OpenAI<br/>gpt-4o-mini"]
+    end
+    APP -- "REST + JWT" --> API
+    ING --> VLM
+    ING --> OFF
+    ITEMS --> DB
+    AUTH --> DB
+    REC --> LLM
 ```
 
-### Core Data Models
+### AI suggests, you decide
 
-#### DraftItem (AI-Generated)
-Temporary items created by AI ingestion, awaiting user confirmation.
-- Nullable fields (quantity, expiry_date, etc.)
-- Includes confidence scores
-- Source tracking (image/barcode/manual)
+A vision model can be confidently wrong, so nothing it says is trusted until you confirm it.
 
-#### InventoryItem (User-Confirmed)
-Trusted inventory data after user review and confirmation.
-- All fields required
-- Used for analytics and predictions
-- Immutable source of truth
-
-### API Structure
-
-```
-/auth
-  POST /register          # User registration
-  POST /login             # User login (returns JWT)
-
-/api/draft-items
-  GET  /                  # List draft items
-  POST /                  # Create draft item
-  POST /{id}/confirm      # Confirm draft → inventory
-  DELETE /{id}            # Delete draft
-
-/api/inventory
-  GET  /                  # List inventory items
-  GET  /{id}              # Get specific item
-  PUT  /{id}              # Update item
-  PATCH /{id}/quantity    # Update quantity only
-  DELETE /{id}            # Delete item
-
-/api/ingest
-  POST /image             # Process image with GPT-4o Vision
-  GET  /barcode/{code}    # Lookup barcode product info
-
-/api/expiry
-  POST /predict           # Predict expiration date
+```mermaid
+sequenceDiagram
+    actor You
+    participant App
+    participant API as API
+    participant VLM as Vision model
+    participant DB as Database
+    You->>App: Photo of your groceries
+    App->>App: Resize to 1024 px
+    App->>API: POST /api/ingest/image
+    API->>VLM: Photo and a structured prompt
+    VLM-->>API: Items, categories, quantities
+    API->>API: Normalise categories and units, predict expiry
+    API->>DB: Save as drafts (untrusted)
+    API-->>App: Draft items
+    You->>App: Confirm, edit or skip each one
+    App->>API: Confirm
+    API->>DB: Save as inventory (trusted)
 ```
 
-## Getting Started
+Drafts may have missing fields and carry a confidence score. Inventory items have every field
+filled in, and the only way to create one is to confirm a draft. More in the [API README](api/).
 
-### Prerequisites
+## The research
 
-- Python 3.10 or higher
-- PostgreSQL database
-- Node.js 16+ and npm
-- OpenAI API key
-- Expo CLI (for mobile development)
+Which pipeline should read the photo? I tested that before building on it.
 
-### Backend Setup
+```mermaid
+flowchart LR
+    E1["<b>Experiment 1</b><br/>3 CNNs on 120,842 images"]
+    E2["<b>Experiment 2</b><br/>3 pipelines on 120 real<br/>kitchen photos, 4 conditions"]
+    APP["<b>SnapShelf</b><br/>uses the winner"]
+    E1 -- "EfficientNetB0, 99.75%" --> E2
+    E2 -- "VLM, F1 0.900" --> APP
+```
 
-1. Clone the repository:
+| Pipeline | F1, clean photos | Worst F1 drop under blur, noise or JPEG | Time per photo |
+|---|---|---|---|
+| **Vision-language model (GPT-5.2)** | **0.900** | **0.034** | 2.3 to 10.7 s |
+| YOLOv8s, 14 classes | 0.603 | 0.350 | 0.2 to 0.5 s |
+| YOLOv8s + EfficientNetB0 | 0.547 | 0.180 | 0.9 to 1.3 s |
+
+- A classifier that scored **99.75% on studio images** sat inside the weakest pipeline on real
+  kitchen photos.
+- The VLM stayed accurate under heavy noise that broke YOLO, and **all of its false positives
+  were grapes**: the labels count a bunch as one, the model counted berries.
+- YOLO is far faster and works offline, so it remains the right choice when there is no network.
+
+The full write-up, with research questions, figures and limitations, is in
+[**research/**](research/).
+
+### The dataset
+
+The 120 test photos are published on Hugging Face as
+[**Kitchen Fruit & Vegetable Detection**](https://huggingface.co/datasets/omorros/kitchen-fruit-vegetable-detection):
+585 hand-drawn boxes across 14 classes, with location, difficulty and camera-angle metadata, in
+COCO and YOLO formats, under CC BY 4.0.
+
+## Run it
+
+**Backend** (tested on Python 3.13):
+
 ```bash
-git clone <repository-url>
-cd SnapShelf-backend
-```
-
-2. Create and activate virtual environment:
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-```
-
-3. Install dependencies:
-```bash
+cd api
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. Configure environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-Required environment variables:
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/snapshelf
-SECRET_KEY=your-secret-key-here
-OPENAI_API_KEY=sk-...
-ACCESS_TOKEN_EXPIRE_MINUTES=10080
-```
-
-5. Run database migrations:
-```bash
-# If using Alembic
-alembic upgrade head
-```
-
-6. Start the development server:
-```bash
+cp .env.example .env      # DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
+**App** (Node 20 or newer):
 
-API documentation: `http://localhost:8000/docs`
-
-### Mobile App Setup
-
-1. Navigate to mobile directory:
 ```bash
 cd mobile
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Configure API endpoint:
-```typescript
-// mobile/services/api.ts
-const API_BASE_URL = 'http://YOUR_IP:8000';  // Update with your machine's IP
-```
-
-4. Start Expo development server:
-```bash
+npm install --legacy-peer-deps
+cp .env.example .env      # EXPO_PUBLIC_API_URL
 npx expo start
 ```
 
-5. Run on device:
-- Install Expo Go app on your mobile device
-- Scan the QR code from the terminal
-- Ensure your device is on the same network as your development machine
-
-## Project Structure
-
-```
-SnapShelf-backend/
-├── app/
-│   ├── core/
-│   │   ├── config.py              # Configuration management
-│   │   ├── database.py            # Database session handling
-│   │   └── security.py            # Authentication & hashing
-│   ├── models/
-│   │   ├── user.py                # User model
-│   │   ├── draft_item.py          # Draft item model
-│   │   └── inventory_item.py      # Inventory item model
-│   ├── schemas/
-│   │   ├── auth.py                # Auth request/response schemas
-│   │   ├── draft_item.py          # Draft item schemas
-│   │   └── inventory_item.py      # Inventory item schemas
-│   ├── routers/
-│   │   ├── auth.py                # Authentication endpoints
-│   │   ├── draft_items.py         # Draft item CRUD
-│   │   ├── inventory_items.py     # Inventory CRUD
-│   │   ├── ingestion.py           # Image/barcode ingestion
-│   │   └── expiry_prediction.py   # Expiry prediction
-│   ├── services/
-│   │   ├── ingestion/
-│   │   │   ├── barcode_ingestion.py
-│   │   │   ├── image_ingestion.py
-│   │   │   ├── gpt4o_vision.py
-│   │   │   └── product_lookup.py
-│   │   └── expiry_prediction/
-│   │       ├── service.py
-│   │       └── strategies/
-│   └── main.py                    # Application entry point
-├── mobile/
-│   ├── app/
-│   │   ├── (auth)/               # Authentication screens
-│   │   ├── (tabs)/               # Main app tabs
-│   │   └── add-item.tsx          # Add item screen
-│   ├── services/
-│   │   ├── api.ts                # API client
-│   │   └── auth.tsx              # Auth context
-│   └── types/
-│       └── index.ts              # TypeScript definitions
-├── tests/
-│   ├── test_expiry_prediction.py
-│   ├── test_barcode_endpoint.py
-│   └── test_image_ingestion.py
-├── .env                          # Environment configuration
-├── requirements.txt              # Python dependencies
-└── README.md                     # This file
-```
-
-## Development
-
-### Running Tests
+**Tests:**
 
 ```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app tests/
-
-# Run specific test file
-pytest tests/test_expiry_prediction.py -v
+pytest                                  # 52 backend tests, no database or API key needed
+cd mobile && npx tsc --noEmit           # type-check the app
 ```
 
-### API Documentation
+Details: [api/README.md](api/) and [mobile/README.md](mobile/).
 
-Once the backend is running, visit:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+## Repository
 
-### Code Style
-
-The project follows:
-- **Python**: PEP 8 style guide
-- **JavaScript/TypeScript**: ESLint + Prettier
-- **Commits**: Conventional Commits specification
-
-## Deployment
-
-### Backend Deployment
-
-The FastAPI backend can be deployed to any platform supporting Python web applications:
-- **Railway**: One-click deployment
-- **Heroku**: With Postgres add-on
-- **AWS**: EC2 + RDS
-- **DigitalOcean**: App Platform
-
-Ensure environment variables are properly configured in your deployment platform.
-
-### Mobile App Deployment
-
-```bash
-cd mobile
-
-# Build for production
-eas build --platform android
-eas build --platform ios
-
-# Submit to stores
-eas submit --platform android
-eas submit --platform ios
+```
+SnapShelf/
+├── api/                          FastAPI backend and its tests
+├── mobile/                       Expo app
+├── research/
+│   ├── 01-cnn-comparison/        Experiment 1: notebooks and figures
+│   └── 02-pipeline-comparison/   Experiment 2: pipelines, evaluation, YOLO training
+└── docs/                         product requirements and images
 ```
 
-## Contributing
+## How it came together
 
-This project is part of a university final-year Software Engineering project. Contributions are currently limited to project collaborators.
+```mermaid
+timeline
+    title From a console script to SnapShelf
+    Oct 2025 : SmartFoodAI, a console app with a first fruit-recognition CNN
+    Nov 2025 : A shelf-life model in XGBoost, a React web app and a 14-class EfficientNet
+    Dec 2025 : SnapShelf starts as a mobile-first app built around confirming AI suggestions
+    Jan 2026 : Experiment 1 compares CNNs and Experiment 2 compares pipelines
+    Feb 2026 : 120 kitchen photos shot and hand-labelled
+    Apr 2026 : Dissertation submitted
+    Oct 2026 : App and research merged into this repo, dataset published
+```
 
-### Development Workflow
+The original plan was one custom CNN, a regression model for expiry dates and receipt OCR.
+Vision-language models improved so quickly during the literature review that the better question
+became which approach to build on at all, so the project turned into a fair comparison, and the
+app ships the winner.
 
-1. Create a feature branch from `main`
-2. Implement changes with appropriate tests
-3. Ensure all tests pass: `pytest`
-4. Submit pull request with detailed description
+## Built with
 
-## License
-
-This project is proprietary software developed for academic and commercial purposes.
-
-## Acknowledgments
-
-- **OpenFoodFacts**: Open database for product information
-- **OpenAI**: GPT-4o Vision API for image recognition
-- **FastAPI**: Modern web framework for building APIs
-- **Expo**: React Native development platform
-
-## Contact
-
-For questions or support, please contact the development team.
+**App:** React Native, Expo, Expo Router, TypeScript. **Backend:** FastAPI, SQLAlchemy,
+PostgreSQL, Pydantic, JWT. **AI:** OpenAI GPT-5.2 (vision) and gpt-4o-mini (recipes).
+**Research:** TensorFlow and Keras, Ultralytics YOLOv8, OpenCV, scikit-learn, Google Colab.
 
 ---
 
-**Note**: This is an active development project. Features and documentation are continuously updated.
+Built by [Oriol Morros Vilaseca](https://omorros.com). The code is all rights reserved; the
+dataset is CC BY 4.0.
