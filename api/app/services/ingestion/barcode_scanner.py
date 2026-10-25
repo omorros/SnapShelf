@@ -23,8 +23,16 @@ class BarcodeScanner:
     """
 
     def __init__(self):
-        """Initialize the barcode reader (may download Java deps on first run)"""
-        self.reader = BarCodeReader()
+        """The reader is created on first use: pyzxing needs a Java runtime,
+        and only image-barcode scanning should fail without one."""
+        self._reader: Optional[BarCodeReader] = None
+
+    @property
+    def reader(self) -> BarCodeReader:
+        """Lazy initialization of the pyzxing reader (raises if Java is missing)."""
+        if self._reader is None:
+            self._reader = BarCodeReader()
+        return self._reader
 
     def scan_image(self, image_bytes: bytes) -> Optional[str]:
         """

@@ -154,3 +154,40 @@ class TestHealthCheck:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+
+class TestBarcodeUpload:
+    """Tests for scanning a barcode from an uploaded image."""
+
+    def test_without_java_explains_why(self, client, test_user, auth_headers, monkeypatch):
+        """With no Java runtime, only this endpoint fails, and it says why."""
+        from app.services.ingestion import barcode_scanner as scanner_module
+        monkeypatch.setattr(scanner_module.barcode_scanner, "_reader", None, raising=False)
+        monkeypatch.setenv("PATH", "/nonexistent")
+
+        response = client.post(
+            "/api/ingest/barcode",
+            files={"image": ("code.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, "image/jpeg")},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 400
+        assert "Java" in response.json()["detail"]
+
+    @patch("app.routers.ingestion.barcode_ingestion_service")
+    def test_stores_predicted_expiry_as_a_date(self, mock_service, client, test_user, auth_headers):
+        """The predicted expiry string becomes a real date on the draft."""
+        from app.services.ingestion.barcode_ingestion import BarcodeIngestionResult
+        mock_service.ingest_from_image.return_value = BarcodeIngestionResult(
+            success=True, barcode="5000112548167", name="Semi-skimmed milk",
+            category="dairy", predicted_expiry="2026-11-01", confidence_score=0.85,
+        )
+
+        response = client.post(
+            "/api/ingest/barcode",
+            files={"image": ("code.jpg", b"\xff\xd8\xff\xe0" + b"\x00" * 100, "image/jpeg")},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 201
+        assert response.json()["expiration_date"] == "2026-11-01"
